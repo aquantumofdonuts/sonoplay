@@ -252,9 +252,15 @@ class SubscribeManager(object):
                 for device in target_devices:
                     adapter = await adapter_by_device(device)
                     wait_tasks.append(asyncio.create_task(adapter.wait_for_event(wait_timeout)))
-                await asyncio.wait(wait_tasks,
-                                   timeout=wait_timeout,
-                                   return_when=asyncio.FIRST_EXCEPTION)
+                done, pending = await asyncio.wait(wait_tasks,
+                                                   timeout=wait_timeout,
+                                                   return_when=asyncio.FIRST_COMPLETED)
+                # Cancel leftover waiters so they don't pile up in each
+                # adapter's wait_state_change_events between iterations.
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.gather(*pending, return_exceptions=True)
             except asyncio.exceptions.TimeoutError:
                 pass
             try:

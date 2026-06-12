@@ -173,6 +173,9 @@ class DlnaDeviceService(object):
         self.urn = self.service_type
         self.device = device
         self.subscribed = False
+        # Identity token of the currently-owning subscribe loop; prevents a
+        # woken older loop from running alongside a newly spawned one.
+        self.subscribe_loop_token = None
         self._spec_info = None
         self.next_subscribe_call_time = None
         # Subscription expiry tracking for auto-renewal
@@ -549,7 +552,12 @@ class DlnaDevice(object):
         avt_service = self._get_service(UPNP_AVT_SERVICE_TYPE)
         if avt_service is None:
             return True  # No AVT service, assume ready
-        
+        try:
+            if await avt_service.get_action_spec("GetCurrentTransportActions") is None:
+                return True  # Device doesn't support the query, assume ready
+        except Exception:
+            return True
+
         poll_interval = 0.25
         end_time = time.monotonic() + max_wait
         
@@ -579,7 +587,12 @@ class DlnaDevice(object):
         if service.subscribed:
             return
         service.subscribed = True
-        while service.subscribed:
+        # Take ownership: if stop_subscribe ran while an older loop slept and
+        # a new loop was spawned meanwhile, the older loop must not resume
+        # when it sees subscribed flipped back to True.
+        token = object()
+        service.subscribe_loop_token = token
+        while service.subscribed and service.subscribe_loop_token is token:
             try:
                 await self.subscribe(service_type=service_type, timeout_sec=timeout_sec)
                 await asyncio.sleep(timeout_sec // 2)

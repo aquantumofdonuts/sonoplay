@@ -25,6 +25,7 @@ from html import escape as xml_escape
 from pydantic import BaseModel, Field
 import uvicorn
 import logging
+import re
 
 from dlna import (
     get_device_by_uuid,
@@ -119,13 +120,6 @@ async def handle_device_unreachable(request: Request, exc: ClientConnectionError
     )
 
 
-def format_ms_to_hms(ms: int):
-    total_seconds = max(0, int(ms // 1000))
-    hours, remainder = divmod(total_seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
-    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-
-
 async def on_new_dlna_device(location_url):
     logger.info("got new dlna device location url %s", location_url)
     for d in devices:
@@ -208,8 +202,24 @@ async def build_response(content: str, device: DlnaDevice = None, target_uuid: s
                     headers=headers)
 
 
+def _apply_stored_audio_settings():
+    """Apply persisted audio transcode thresholds to the runtime settings.
+
+    Without this, values saved via /api/audio-settings are silently
+    replaced by the class defaults on every restart.
+    """
+    stored = settings.datastore.get_audio_settings()
+    object.__setattr__(settings, 'audio_transcode_threshold_kbps',
+                       stored.get("bitrate_kbps") if stored.get("bitrate_kbps") else None)
+    object.__setattr__(settings, 'audio_transcode_max_sample_rate_hz',
+                       stored.get("sample_rate_hz") if stored.get("sample_rate_hz") else None)
+    logger.info("audio settings loaded: bitrate=%s kbps, sample_rate=%s Hz",
+                stored.get("bitrate_kbps"), stored.get("sample_rate_hz"))
+
+
 @s.on_event("startup")
 async def on_startup():
+    _apply_stored_audio_settings()
     # Create HTTP session with default timeout
     timeout = aiohttp.ClientTimeout(
         total=settings.http_timeout_default,
@@ -239,7 +249,10 @@ async def on_shutdown():
     stop_tasks = []
     for device in devices:
         adapter = await adapter_by_device(device)
-        stop_tasks.append(adapter.stop())
+        # Only stop playback this bridge started (it has an active queue);
+        # don't silence speakers playing from other sources on restart.
+        if adapter.queue is not None:
+            stop_tasks.append(adapter.stop())
         stop_tasks.append(device.remove_self())
     await asyncio.gather(*stop_tasks)
     if g.http:
@@ -281,60 +294,38 @@ async def plex_status():
     return {"connected": False}
 
 
-@s.get("/")
-async def link_page(request: Request):
-    await guess_host_ip(request)
-    ds = []
+@s.post("/api/plex-disconnect")
+async def api_plex_disconnect():
+    """Unlink all devices (physical and virtual) from Plex."""
+    unlinked = 0
     for d in devices:
         adapter = await adapter_by_device(d)
-        stats = adapter.stats_snapshot()
-        play_duration = format_ms_to_hms(stats['play_duration_ms'])
-        current_session = "--"
-        if stats['current_session_ms'] > 0:
-            current_session = format_ms_to_hms(stats['current_session_ms'])
-        status = stats['status']
-        if status == "playing":
-            status_label = "Playing"
-        elif status == "online":
-            status_label = "Available"
-        else:
-            status_label = "Unavailable"
-        status_class = {
-            "playing": "lamp-playing",
-            "online": "lamp-online",
-            "offline": "lamp-offline"
-        }.get(status, "lamp-offline")
         if adapter.plex_bind_token is not None:
-            ds.append(dict(
-                name=d.name,
-                uuid=d.uuid,
-                binded=True,
-                status_label=status_label,
-                status_class=status_class,
-                ip=d.ip,
-                play_count=stats['play_count'],
-                play_duration=play_duration,
-                current_session=current_session
-            ))
-        else:
-            pin, pin_id = await pin_login.get_pin(d)
-            ds.append(dict(
-                name=d.name,
-                uuid=d.uuid,
-                pin=pin,
-                pin_id=pin_id,
-                binded=False,
-                status_label=status_label,
-                status_class=status_class,
-                ip=d.ip,
-                play_count=stats['play_count'],
-                play_duration=play_duration,
-                current_session=current_session
-            ))
+            settings.set_token_for_uuid(d.uuid, None)
+            adapter.plex_bind_token = None
+            pin_login.clear_pin_cache(d.uuid)
+            unlinked += 1
+            logger.info("Device unlinked from Plex: %s (%s)", d.name, d.uuid)
+    for vd in list_virtual_devices():
+        if settings.get_token_for_uuid(vd.uuid) is not None:
+            settings.set_token_for_uuid(vd.uuid, None)
+            pin_login.clear_pin_cache(vd.uuid)
+            adapter = await adapter_by_device(vd)
+            adapter.plex_bind_token = None
+            unlinked += 1
+            logger.info("Virtual device unlinked from Plex: %s (%s)", vd.name, vd.uuid)
+    return {"success": True, "devices_unlinked": unlinked}
+
+
+@s.get("/")
+async def link_page(request: Request):
+    # The template renders client-side from /api/devices; building the
+    # device list here (including plex.tv PIN fetches per unlinked device)
+    # only delayed first paint.
+    await guess_host_ip(request)
     return templates.TemplateResponse(
         "discovered_devices.html",
         {
-            'devices': ds,
             'request': request,
             'onboarding_enabled': settings.enable_onboarding_wizard,
             'active_page': 'devices'
@@ -492,16 +483,10 @@ async def api_update_audio_settings(payload: AudioSettingsUpdate):
         bitrate_kbps=payload.bitrate_kbps,
         sample_rate_hz=payload.sample_rate_hz
     )
-    
+
     # Update the runtime settings object so changes take effect immediately
+    _apply_stored_audio_settings()
     stored = settings.datastore.get_audio_settings()
-    object.__setattr__(settings, 'audio_transcode_threshold_kbps', 
-                       stored.get("bitrate_kbps") if stored.get("bitrate_kbps") else None)
-    object.__setattr__(settings, 'audio_transcode_max_sample_rate_hz', 
-                       stored.get("sample_rate_hz") if stored.get("sample_rate_hz") else None)
-    
-    logger.info(f"Audio settings updated: bitrate={stored.get('bitrate_kbps')} kbps, sample_rate={stored.get('sample_rate_hz')} Hz")
-    
     return {
         "success": True,
         "bitrate_kbps": stored.get("bitrate_kbps"),
@@ -610,6 +595,7 @@ async def api_devices(request: Request):
             'play_count': stats['play_count'],
             'play_duration_ms': stats['play_duration_ms'],
             'current_session_ms': stats['current_session_ms'],
+            'elapsed_ms': adapter.state.elapsed or 0,
             'current_track': current_track,
             'artwork_urls': artwork_urls,
             'plex_client': plex_client,
@@ -998,14 +984,16 @@ async def mirror(target_uuid: str = Header(None, alias="x-plex-target-client-ide
 
 
 class SuppressNoisyHTTPLogsFilter(logging.Filter):
-    """Filter out noisy HTTP access logs for specific endpoints"""
+    """Filter out noisy HTTP access logs for specific endpoints.
+
+    Matches the exact request path (with optional query string) so that
+    other paths sharing the prefix — e.g. a 404 on /api/devices/x/y —
+    still get logged.
+    """
+    _NOISY_PATHS = re.compile(r'"GET /(?:api/devices|player/timeline/poll)(?:\?[^" ]*)? HTTP')
+
     def filter(self, record: logging.LogRecord) -> bool:
-        msg = record.getMessage()
-        if "/api/devices" in msg:
-            return False
-        if "/player/timeline/poll" in msg:
-            return False
-        return True
+        return self._NOISY_PATHS.search(record.getMessage()) is None
 
 
 def start_plex_server(port=None):

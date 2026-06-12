@@ -20,6 +20,7 @@
 # (at your option) any later version.
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta, datetime, timezone
 import logging
 import math
@@ -44,6 +45,16 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 adapters = {}
 _adapters_lock = asyncio.Lock()
+
+# Stats persistence does a JSON read-modify-write with fsync; running it on
+# the event loop stalls every request during playback transitions. A single
+# worker keeps writes ordered and serialized.
+_stats_io_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="stats-io")
+
+
+def _persist_stats(fn, *args):
+    """Run a blocking settings write off the event loop (ordered)."""
+    _stats_io_executor.submit(fn, *args)
 
 
 async def adapter_by_device(device, query_params: QueryParams = None):
@@ -277,11 +288,9 @@ class DlnaState(object):
         self._wakeup_loop()
 
     def __del__(self):
+        # Only flag the thread to stop — joining here can block the GC.
+        # Explicit lifecycle teardown is handled by shutdown().
         self._thread_should_stop = True
-        if self.looping_thread is not None:
-            if self.looping_thread.is_alive():
-                self.looping_thread.join(timeout=2.0)
-            self.looping_thread = None
 
     def shutdown(self):
         """Cleanly stop the background polling thread.
@@ -343,12 +352,14 @@ class DlnaState(object):
             results.append(muted)
         if self.check_all_next_loop:
             self.check_all_next_loop = False
-        try:
-            for idx, r in enumerate(await asyncio.gather(*checks)):
-                results[idx].result = r
-        except Exception as e:
-            if __debug__:
-                logger.debug("dlna %s state loop error: %s", self.dlna.name, str(e))
+        # return_exceptions=True so one flaky UPnP reply doesn't discard the
+        # whole poll cycle's results (position, state, volume, mute).
+        for idx, r in enumerate(await asyncio.gather(*checks, return_exceptions=True)):
+            if isinstance(r, BaseException):
+                if __debug__:
+                    logger.debug("dlna %s state loop error: %s", self.dlna.name, str(r))
+                continue
+            results[idx].result = r
         self.begin_change_session()
         if position_info and position_info.result:
             position_info = position_info.result
@@ -388,9 +399,14 @@ class DlnaState(object):
 
     @property
     def loop_interval(self):
-        if datetime.now(timezone.utc) - self.last_access_time >= timedelta(seconds=90) \
-                and self.state not in ("PLAYING", "TRANSITIONING"):
+        if self.state in ("PLAYING", "TRANSITIONING"):
+            return 0.8
+        if datetime.now(timezone.utc) - self.last_access_time >= timedelta(seconds=90):
             return settings.adapter_idle_interval
+        if self.state in ("STOPPED", "NO_MEDIA_PRESENT", None):
+            # Watched but idle: no position to track, relax the SOAP chatter.
+            # Commands wake the loop immediately via looping_wait_event.
+            return 5.0
         return 0.8
 
     async def wait_for_next_loop(self):
@@ -522,6 +538,7 @@ class PlexDlnaAdapter(object):
         self._transport_settle_timeout = 6.0
         self._transport_max_attempts = 3
         self._suppress_auto_next = False
+        self._transport_cancel_requested = False
         self._last_operation_finish_time: Optional[float] = None
         self._post_operation_protection_window = 2.0  # seconds
         self._last_finished_target_uri: Optional[str] = None
@@ -726,7 +743,7 @@ class PlexDlnaAdapter(object):
             else:
                 await self.next()
 
-        if self.state.current_uri is not None and not changed.state and not changed.uri and self.current_track_info:
+        if self.state.current_uri is not None and not changed.state and not changed.current_uri and self.current_track_info:
             if (changed.elapsed == 0 < changed.old.elapsed <= self.current_track_info.duration
                 and self.current_track_info.duration - changed.old.elapsed <= 2000) \
                     or (
@@ -743,8 +760,12 @@ class PlexDlnaAdapter(object):
                 self.state.update(state="TRANSITIONING", uri=None)
                 asyncio.run_coroutine_threadsafe(self._with_no_notice(auto_next()), self.loop)
                 return True
-        elif not changed.uri and changed.old.state == "PLAYING" and changed.state == "STOPPED" and self.state.current_track_duration - self.state.elapsed <= 1:
-            logger.info("auto next transitioning %s %s", changed.old.state, changed.state)
+        elif not changed.current_uri and changed.old.state == "PLAYING" and changed.state == "STOPPED":
+            # _suppress_auto_next guards intentional stops (set by stop()); when the
+            # device stops naturally we can't rely on elapsed because Sonos resets it
+            # to 0 before we poll it, making the old `<= 1ms` check unreachable.
+            logger.info("auto next transitioning %s %s (elapsed=%s duration=%s)",
+                        changed.old.state, changed.state, self.state.elapsed, self.state.current_track_duration)
             self.no_notice = True
             self._auto_next_in_flight = True
             self.state.update(state="TRANSITIONING", uri=None)
@@ -831,20 +852,16 @@ class PlexDlnaAdapter(object):
     async def state_changed(self, changed_state: DotMap):
         removed_event = []
         for e in self.wait_state_change_events:
-            if not e['interesting_fields']:
+            fields = e['interesting_fields']
+            matched = not fields
+            if not matched:
+                matched = any(f in changed_state.keys() for f in fields)
+            if not matched and "elapsed_jump" in fields:
+                matched = "elapsed" in changed_state and \
+                    not (0 <= changed_state.elapsed - changed_state.old.elapsed <= 1000)
+            if matched:
                 e['event'].set()
                 removed_event.append(e)
-                continue
-            for f in e['interesting_fields']:
-                if f in changed_state.keys():
-                    e['event'].set()
-                    removed_event.append(e)
-                    continue
-            if "elapsed_jump" in e['interesting_fields']:
-                if "elapsed" in changed_state and not (0 <= changed_state.elapsed - changed_state.old.elapsed <= 1000):
-                    e['event'].set()
-                    removed_event.append(e)
-                    continue
         for r in removed_event:
             self.wait_state_change_events.remove(r)
         self._update_stats(changed_state)
@@ -855,7 +872,10 @@ class PlexDlnaAdapter(object):
         entry = dict(event=event, interesting_fields=interesting_fields)
         self.wait_state_change_events.append(entry)
         if len(self.wait_state_change_events) > 3:
-            e = self.wait_state_change_events.pop()
+            # Evict the OLDEST waiter, not the entry we just appended —
+            # popping the newest would make every new long-poll return
+            # immediately once 3 waiters exist.
+            e = self.wait_state_change_events.pop(0)
             e['event'].set()
         try:
             await asyncio.wait_for(event.wait(), timeout)
@@ -885,17 +905,17 @@ class PlexDlnaAdapter(object):
         if current_state == "PLAYING" and self.stats_session_start is None:
             self.stats_session_start = now
             self.stats_play_count += 1
-            settings.increment_play_count(self.dlna.uuid)
+            _persist_stats(settings.increment_play_count, self.dlna.uuid)
         elif self.stats_session_start is not None and current_state != "PLAYING":
             elapsed = int((now - self.stats_session_start).total_seconds() * 1000)
             if elapsed > 0:
                 self.stats_play_duration_ms += elapsed
-                settings.add_play_duration_ms(self.dlna.uuid, elapsed)
+                _persist_stats(settings.add_play_duration_ms, self.dlna.uuid, elapsed)
             self.stats_session_start = None
-            settings.mark_device_status(self.dlna.uuid, "online")
+            _persist_stats(settings.mark_device_status, self.dlna.uuid, "online")
         else:
             status = "playing" if current_state == "PLAYING" else "online"
-            settings.mark_device_status(self.dlna.uuid, status)
+            _persist_stats(settings.mark_device_status, self.dlna.uuid, status)
 
     def stats_snapshot(self):
         playing = self.stats_session_start is not None and self._normalize_state(self.state.state) == "PLAYING"
@@ -948,6 +968,7 @@ class PlexDlnaAdapter(object):
             logger.info("%s using Plex transcode for Sonos compatibility", self.dlna.name)
         
         async with self._transport_lock:
+            self._transport_cancel_requested = False
             url = self.queue.url_for_track(track, force_transcode=needs_transcode)
             operation_id = self._start_transport_operation(url)
             self._active_operation_target_paused = paused
@@ -961,6 +982,9 @@ class PlexDlnaAdapter(object):
                         self._reset_active_operation_tracking()
                     await self._issue_transport_commands(url, offset=offset if attempt == 1 else 0, paused=paused)
                     settled = await self._await_transport_settle(operation_id)
+                    if self._transport_cancel_requested:
+                        logger.info("%s transport operation %d cancelled by stop", self.dlna.name, operation_id)
+                        break
                     if settled or attempt >= self._transport_max_attempts:
                         if not settled:
                             logger.warning("%s transport load timed out after %d attempts for %s", self.dlna.name, attempt, url)
@@ -998,7 +1022,13 @@ class PlexDlnaAdapter(object):
         if paused:
             await self.pause()
         else:
-            await asyncio.sleep(0.1)
+            # Poll GetCurrentTransportActions until the device reports Play
+            # is available (devices that lack the action return immediately).
+            wait_ready = getattr(self.dlna, "wait_for_can_play", None)
+            if wait_ready is not None:
+                await wait_ready(max_wait=2.0)
+            else:
+                await asyncio.sleep(0.1)
             await self.play()
 
     async def _await_transport_settle(self, operation_id: int) -> bool:
@@ -1036,6 +1066,13 @@ class PlexDlnaAdapter(object):
             logger.info("%s stop request rerouted to virtual device %s", self.dlna.name, controller.name)
             await controller.handle_member_stop_request(self)
             return
+        # Abort any in-flight transport operation so we don't wait up to
+        # ~18s (retries x settle timeout) for the lock while the user's
+        # stop appears to hang.
+        self._transport_cancel_requested = True
+        settle_event = self._active_operation_event
+        if settle_event is not None:
+            settle_event.set()
         async with self._transport_lock:
             active_id = self._active_operation_id
             if active_id:
@@ -1248,5 +1285,6 @@ class PlexDlnaAdapter(object):
         return state
 
     def __del__(self):
-        self.state._thread_should_stop = True
-        del self.state
+        state = getattr(self, "state", None)
+        if state is not None:
+            state._thread_should_stop = True

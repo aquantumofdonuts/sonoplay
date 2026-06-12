@@ -5,16 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}SonoPlay{% endblock %}</title>
     
-    <!-- Google Fonts -->
+    <!-- Google Fonts (cosmetic only — system fonts are the offline fallback) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    
-    <!-- SweetAlert2 -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.0/dist/sweetalert2.min.css">
+
+    <!-- Font Awesome (vendored: the UI must work on LANs without internet) -->
+    <link rel="stylesheet" href="/static/vendor/fontawesome.min.css">
+
+    <!-- SweetAlert2 (vendored: every dialog depends on it) -->
+    <link rel="stylesheet" href="/static/vendor/sweetalert2.min.css">
     
     <!-- Minimal Clean Theme -->
     <link rel="stylesheet" href="{{ url_for('static', path='/css/minimal-clean.css') }}">
@@ -123,7 +123,7 @@
     {% block modals %}{% endblock %}
     
     <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.10.0/dist/sweetalert2.all.min.js"></script>
+    <script src="/static/vendor/sweetalert2.all.min.js"></script>
     
     <script src="/static/js/shared.js"></script>
     <script>
@@ -235,89 +235,10 @@
                     selectedDevice = unlinkedDevices.find(d => d.uuid === result.value);
                 }
                 
-                // Request PIN for selected device
-                Swal.fire({
-                    title: 'Connecting...',
-                    allowOutsideClick: false,
-                    didOpen: () => Swal.showLoading()
-                });
-                
-                const formData = new FormData();
-                formData.append('uuid', selectedDevice.uuid);
-                formData.append('check_status', 'true');
-                
-                const pinResponse = await fetch('/', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (!pinResponse.ok) throw new Error('Failed to get PIN');
-                const pinData = await pinResponse.json();
-                
-                if (pinData.status === 'linked') {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Already Linked!',
-                        text: `${selectedDevice.name} is connected to Plex.`,
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
+                // Run the shared PIN link flow (defined in shared.js)
+                const linked = await runPlexPinFlow(selectedDevice.uuid, { subject: selectedDevice.name });
+                if (linked) {
                     checkPlexStatus();
-                    return;
-                }
-                
-                if (pinData.pin) {
-                    // Show PIN and poll for authentication
-                    const pinResult = await Swal.fire({
-                        title: 'Connect to Plex',
-                        html: `
-                            <p>Visit <a href="https://plex.tv/link" target="_blank" style="color: #e5a00d; font-weight: bold;">plex.tv/link</a></p>
-                            <p style="margin-top: 1rem;">Enter this code:</p>
-                            <div style="font-size: 2.5rem; font-weight: bold; letter-spacing: 0.25rem; font-family: monospace; margin: 1rem 0; color: #1a1a1a;">${escapeHtml(pinData.pin)}</div>
-                            <p style="color: #666; font-size: 0.9rem;">Linking: ${escapeHtml(selectedDevice.name)}</p>
-                        `,
-                        confirmButtonText: 'I\'ve Entered the Code',
-                        showCancelButton: true,
-                        cancelButtonText: 'Cancel'
-                    });
-                    
-                    if (pinResult.isConfirmed) {
-                        // Check if linked
-                        Swal.fire({
-                            title: 'Checking...',
-                            allowOutsideClick: false,
-                            didOpen: () => Swal.showLoading()
-                        });
-                        
-                        const checkForm = new FormData();
-                        checkForm.append('uuid', selectedDevice.uuid);
-                        checkForm.append('pin_id', pinData.pin_id);
-                        
-                        const checkResponse = await fetch('/', {
-                            method: 'POST',
-                            body: checkForm
-                        });
-                        
-                        if (checkResponse.ok) {
-                            const checkData = await checkResponse.json();
-                            if (checkData.status === 'linked') {
-                                Swal.fire({
-                                    icon: 'success',
-                                    title: 'Connected!',
-                                    text: `${selectedDevice.name} is now linked to Plex.`,
-                                    timer: 2000,
-                                    showConfirmButton: false
-                                });
-                                checkPlexStatus();
-                            } else {
-                                Swal.fire({
-                                    icon: 'warning',
-                                    title: 'Not Yet Linked',
-                                    text: 'Please enter the code at plex.tv/link and try again.',
-                                });
-                            }
-                        }
-                    }
                 }
             } catch (error) {
                 console.error('Failed to start Plex login:', error);
@@ -332,18 +253,22 @@
         async function disconnectPlex() {
             try {
                 const response = await fetch('/api/plex-disconnect', { method: 'POST' });
-                if (response.ok) {
-                    updatePlexUI(false);
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Disconnected',
-                        text: 'Plex account has been unlinked.',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
-                }
+                if (!response.ok) throw new Error(`Disconnect failed (${response.status})`);
+                updatePlexUI(false);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Disconnected',
+                    text: 'Plex account has been unlinked.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
             } catch (error) {
                 console.error('Failed to disconnect Plex:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Disconnect Failed',
+                    text: 'Could not unlink Plex. Please try again.'
+                });
             }
         }
         
@@ -383,10 +308,16 @@
             return 0;
         }
         
+        let settingsModalPrevFocus = null;
+
         async function openSettingsModal() {
             const modal = document.getElementById('settingsModal');
             modal.style.display = 'flex';
-            
+
+            // Move focus into the dialog; restore on close
+            settingsModalPrevFocus = document.activeElement;
+            document.getElementById('bitrateSlider')?.focus();
+
             // Fetch current settings
             try {
                 const response = await fetch('/api/audio-settings');
@@ -410,6 +341,10 @@
         
         function closeSettingsModal() {
             document.getElementById('settingsModal').style.display = 'none';
+            if (settingsModalPrevFocus && typeof settingsModalPrevFocus.focus === 'function') {
+                settingsModalPrevFocus.focus();
+            }
+            settingsModalPrevFocus = null;
         }
         
         async function saveAudioSettings() {
@@ -455,10 +390,28 @@
         document.getElementById('settingsModal')?.addEventListener('click', function(e) {
             if (e.target === this) closeSettingsModal();
         });
-        
-        // Close modal on Escape key
+
+        // Trap Tab focus inside the dialog while it's open
+        document.getElementById('settingsModal')?.addEventListener('keydown', function(e) {
+            if (e.key !== 'Tab') return;
+            const focusables = this.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])');
+            if (!focusables.length) return;
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        });
+
+        // Close modal on Escape key (only when it's open)
         document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') closeSettingsModal();
+            if (e.key !== 'Escape') return;
+            const modal = document.getElementById('settingsModal');
+            if (modal && modal.style.display !== 'none') closeSettingsModal();
         });
     </script>
     
@@ -641,7 +594,6 @@
                 });
                 
                 if (result.isConfirmed || result.isDenied) {
-                    const data = result.value || result.value;
                     const newName = result.isConfirmed ? result.value.name : (result.isDenied ? document.getElementById('device-name')?.value || device.name : device.name);
                     const shouldLink = result.isConfirmed && !device.binded;
                     
@@ -670,101 +622,10 @@
             },
             
             async linkDevice(device) {
-                // Request PIN using check_status pattern
-                Swal.fire({
-                    title: 'Linking to Plex...',
-                    html: 'Requesting authorization...',
-                    allowOutsideClick: false,
-                    didOpen: () => Swal.showLoading()
-                });
-                
-                try {
-                    const formData = new FormData();
-                    formData.append('uuid', device.uuid);
-                    formData.append('check_status', 'true');
-                    
-                    const pinResponse = await fetch('/', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    if (!pinResponse.ok) throw new Error('Failed to get PIN');
-                    const pinData = await pinResponse.json();
-                    
-                    if (pinData.status === 'linked') {
-                        device.binded = true;
-                        await Swal.fire({
-                            icon: 'success',
-                            title: 'Already Linked!',
-                            text: `${device.name} is connected to Plex.`,
-                            timer: 1500,
-                            showConfirmButton: false
-                        });
-                        return;
-                    }
-                    
-                    if (pinData.pin) {
-                        // Show PIN to user
-                        const pinResult = await Swal.fire({
-                            title: 'Link to Plex',
-                            html: `
-                                <p>Visit <a href="https://plex.tv/link" target="_blank" style="color: #e5a00d; font-weight: bold;">plex.tv/link</a></p>
-                                <p style="margin-top: 1rem;">Enter this code:</p>
-                                <div style="font-size: 2.5rem; font-weight: bold; letter-spacing: 0.25rem; font-family: monospace; margin: 1rem 0; color: #1a1a1a;">${escapeHtml(pinData.pin)}</div>
-                            `,
-                            confirmButtonText: 'I\'ve Entered the Code',
-                            showCancelButton: true,
-                            cancelButtonText: 'Skip'
-                        });
-                        
-                        if (pinResult.isConfirmed) {
-                            // Check if linked using pin_id
-                            Swal.fire({
-                                title: 'Checking...',
-                                allowOutsideClick: false,
-                                didOpen: () => Swal.showLoading()
-                            });
-                            
-                            const checkForm = new FormData();
-                            checkForm.append('uuid', device.uuid);
-                            checkForm.append('pin_id', pinData.pin_id);
-                            
-                            const checkResponse = await fetch('/', {
-                                method: 'POST',
-                                body: checkForm
-                            });
-                            
-                            if (checkResponse.ok) {
-                                const checkData = await checkResponse.json();
-                                if (checkData.status === 'linked') {
-                                    device.binded = true;
-                                    await Swal.fire({
-                                        icon: 'success',
-                                        title: 'Linked!',
-                                        text: `${device.name} is now connected to Plex.`,
-                                        timer: 1500,
-                                        showConfirmButton: false
-                                    });
-                                } else {
-                                    await Swal.fire({
-                                        icon: 'warning',
-                                        title: 'Not Yet Linked',
-                                        text: 'Please enter the code at plex.tv/link and try again.',
-                                        confirmButtonText: 'OK'
-                                    });
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.error('Link failed:', error);
-                    await Swal.fire({
-                        icon: 'error',
-                        title: 'Link Failed',
-                        text: 'Failed to connect to Plex. Please try again.',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
+                // Shared PIN link flow (defined in shared.js)
+                const linked = await runPlexPinFlow(device.uuid, { subject: device.name });
+                if (linked) {
+                    device.binded = true;
                 }
             },
             

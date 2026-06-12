@@ -122,18 +122,25 @@ class JSONDataStore(DataStore):
         return dict(self._settings.load_data())
 
     def _mutate_entry(self, uuid: str, mutator: Callable[[Dict[str, Any]], None]) -> None:
-        data = self._load_data()
-        entry = dict(data.get(uuid, {}))
-        mutator(entry)
-        data[uuid] = entry
-        self._settings.save_data(data)
+        # Hold the data lock across the whole read-modify-write; taking it
+        # separately for the read and the write leaves a lost-update window
+        # against concurrent writers (e.g. _mutate_device_stats).
+        from settings import _data_lock
+        with _data_lock:
+            data = self._load_data()
+            entry = dict(data.get(uuid, {}))
+            mutator(entry)
+            data[uuid] = entry
+            self._settings.save_data(data)
 
     def _mutate_meta(self, mutator: Callable[[Dict[str, Any]], None]) -> None:
-        data = self._load_data()
-        meta = dict(data.get(self._META_KEY, {}))
-        mutator(meta)
-        data[self._META_KEY] = meta
-        self._settings.save_data(data)
+        from settings import _data_lock
+        with _data_lock:
+            data = self._load_data()
+            meta = dict(data.get(self._META_KEY, {}))
+            mutator(meta)
+            data[self._META_KEY] = meta
+            self._settings.save_data(data)
 
     def get_device_stats(self, uuid: str) -> Dict[str, Any]:
         """Get statistics for a device by UUID."""

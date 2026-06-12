@@ -21,17 +21,7 @@ class PlayQueue(object):
         url = URL(url)
         plex_lib = PlexLib()
         plex_lib.protocol = url.scheme
-        
-        # Parse hostname - convert "192-168-2-1.a8b4..." format to "192.168.2.1"
-        hostname = url.hostname
-        if hostname and '-' in hostname:
-            # Split by dots and take first part (before any domain suffix)
-            parts = hostname.split('.')[0].split('-')
-            # Take first 4 parts (IP octets) and join with dots
-            if len(parts) >= 4:
-                hostname = '.'.join(parts[:4])
-        
-        plex_lib.address = hostname
+        plex_lib.address = url.hostname
         plex_lib.port = url.port
         q = QueryParams(url.query)
         plex_lib.token = q.get("X-Plex-Token")
@@ -45,9 +35,14 @@ class PlayQueue(object):
         self.start_offset = None
         self.repeat = 0
 
+    def _fetch_key(self) -> str:
+        # Strip `own=1` — Plex enforces client-id ownership which won't match ours
+        key = URL("http://x" + self.container_key).remove_query_params("own")
+        return key.path + ("?" + key.query if key.query else "")
+
     async def get_info(self):
         if self.info is None:
-            url = self.plex_lib.build_url(self.container_key)
+            url = self.plex_lib.build_url(self._fetch_key())
             logger.debug("get queue %s", url)
             async with g.http.get(url, headers=self.plex_lib.request_headers(accept_json=True)) as res:
                 res.raise_for_status()
@@ -64,7 +59,7 @@ class PlayQueue(object):
             self.container_key = str(self.container_key).replace(str(self.info.playQueueID), str(playQueueID), 1)
         old_selected_item_id = await self.selected_item_id()
         old_selected_item_offset = await self.selected_offset()
-        url = self.plex_lib.build_url(self.container_key)
+        url = self.plex_lib.build_url(self._fetch_key())
         logger.debug("refresh queue from %s", url)
         async with g.http.get(url, headers=self.plex_lib.request_headers(accept_json=True)) as res:
             res.raise_for_status()

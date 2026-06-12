@@ -491,6 +491,9 @@ class VirtualDlnaDevice:
                     volumes.append(int(extract_value(getattr(info, "CurrentVolume", 0), 0)))
             except Exception:
                 continue
+        if not volumes:
+            # All member queries failed even though devices were resolved
+            return DotMap(CurrentVolume=0)
         avg = sum(volumes) // len(volumes)
         return DotMap(CurrentVolume=avg)
 
@@ -872,6 +875,7 @@ class VirtualDlnaDevice:
             "play_count": aggregated_play_count,
             "play_duration_ms": aggregated_play_duration,
             "current_session_ms": aggregated_session,
+            "elapsed_ms": getattr(virtual_adapter.state, "elapsed", 0) or 0,
             "current_track": current_track,
             "artwork_urls": artwork_urls,
             "plex_client": plex_client,

@@ -11,19 +11,19 @@
         gap: var(--space-md);
         flex-wrap: wrap;
     }
-    
+
     @media (max-width: 768px) {
         .page-header-actions {
             width: 100%;
             flex-direction: column;
             align-items: stretch;
         }
-        
+
         .create-btn {
             order: -1;
         }
     }
-    
+
     /* Member list in cards */
     .member-list {
         display: flex;
@@ -31,7 +31,7 @@
         gap: var(--space-xs);
         margin-top: var(--space-sm);
     }
-    
+
     .member-chip {
         display: inline-flex;
         align-items: center;
@@ -43,31 +43,31 @@
         background: var(--bg-tertiary);
         color: var(--text-secondary);
     }
-    
+
     .member-chip.online {
         background: rgba(34, 197, 94, 0.1);
         color: var(--success);
     }
-    
+
     .member-chip.offline {
         background: rgba(239, 68, 68, 0.1);
         color: var(--danger);
     }
-    
+
     .member-chip .status-dot {
         width: 6px;
         height: 6px;
         border-radius: 50%;
     }
-    
+
     .member-chip.online .status-dot {
         background: var(--success);
     }
-    
+
     .member-chip.offline .status-dot {
         background: var(--danger);
     }
-    
+
     /* Group card status */
     .group-status {
         display: inline-flex;
@@ -78,17 +78,17 @@
         padding: 2px 8px;
         border-radius: var(--radius-full);
     }
-    
+
     .group-status.all-available {
         background: rgba(34, 197, 94, 0.1);
         color: var(--success);
     }
-    
+
     .group-status.degraded {
         background: rgba(234, 179, 8, 0.1);
         color: var(--warning);
     }
-    
+
     .group-status.all-offline {
         background: rgba(239, 68, 68, 0.1);
         color: var(--danger);
@@ -115,15 +115,15 @@
         margin-top: auto;
         padding-top: var(--space-md);
     }
-    
+
     .card-actions .control-btn {
         flex: 1;
     }
-    
+
     .card-actions .icon-btn {
         flex: none;
     }
-    
+
     .icon-btn {
         width: 36px;
         height: 36px;
@@ -138,31 +138,36 @@
         cursor: pointer;
         transition: all 0.15s ease;
     }
-    
+
     .icon-btn:hover {
         background: var(--bg-tertiary);
         color: var(--text-primary);
     }
-    
+
     .icon-btn.danger:hover {
         background: rgba(239, 68, 68, 0.1);
         color: var(--danger);
         border-color: var(--danger);
     }
-    
+
+    .device-card:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
+    }
+
     /* Editor modal styles */
     .editor-columns {
         display: grid;
         grid-template-columns: 1fr;
         gap: var(--space-md);
     }
-    
+
     @media (min-width: 600px) {
         .editor-columns {
             grid-template-columns: 1fr 1fr;
         }
     }
-    
+
     .editor-column-title {
         font-size: 0.75rem;
         font-weight: 600;
@@ -171,7 +176,7 @@
         color: var(--text-tertiary);
         margin-bottom: var(--space-sm);
     }
-    
+
     .device-list {
         max-height: 280px;
         overflow-y: auto;
@@ -179,7 +184,7 @@
         border-radius: var(--radius-md);
         background: var(--bg-secondary);
     }
-    
+
     .device-list-item {
         display: flex;
         align-items: center;
@@ -188,25 +193,25 @@
         border-bottom: 1px solid var(--border);
         transition: background 0.15s ease;
     }
-    
+
     .device-list-item:last-child {
         border-bottom: none;
     }
-    
+
     .device-list-item:hover {
         background: var(--bg-tertiary);
     }
-    
+
     .device-list-item.disabled {
         opacity: 0.5;
         pointer-events: none;
     }
-    
+
     .device-list-info {
         min-width: 0;
         flex: 1;
     }
-    
+
     .device-list-name {
         font-size: 0.875rem;
         font-weight: 500;
@@ -215,7 +220,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    
+
     .device-list-model {
         font-size: 0.75rem;
         color: var(--text-tertiary);
@@ -223,21 +228,21 @@
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    
+
     .device-list-actions {
         display: flex;
         align-items: center;
         gap: 4px;
         margin-left: var(--space-sm);
     }
-    
+
     .device-list-actions button {
         width: 28px;
         height: 28px;
         padding: 0;
         font-size: 0.75rem;
     }
-    
+
     .capability-info {
         margin-top: var(--space-md);
         padding: var(--space-sm) var(--space-md);
@@ -246,7 +251,7 @@
         border-radius: var(--radius-md);
         font-size: 0.875rem;
     }
-    
+
     .swal-input-label {
         display: block;
         font-size: 0.75rem;
@@ -257,7 +262,7 @@
         margin-bottom: var(--space-xs);
         text-align: left;
     }
-    
+
     .swal-text-input {
         width: 100%;
         padding: 10px 14px;
@@ -269,7 +274,7 @@
         color: var(--text-primary);
         transition: all 0.15s ease;
     }
-    
+
     .swal-text-input:focus {
         outline: none;
         border-color: var(--accent);
@@ -289,9 +294,9 @@
         <div class="search-box">
             <i class="fas fa-search search-icon"></i>
             <label for="groupSearchInput" class="sr-only">Search groups</label>
-            <input type="text" 
-                   id="groupSearchInput" 
-                   class="search-input" 
+            <input type="text"
+                   id="groupSearchInput"
+                   class="search-input"
                    placeholder="Search groups..."
                    aria-label="Search groups">
         </div>
@@ -333,13 +338,13 @@
         }
     }
 
-    // Group Grid Renderer
+    // Group Grid Renderer (patches keyed cards in place; see shared.js)
     function renderGroupGrid() {
         const grid = document.getElementById('groupGrid');
         const countEl = document.getElementById('groupCount');
         const searchInput = document.getElementById('groupSearchInput');
         const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
-        
+
         if (!grid) return;
 
         // Update count
@@ -352,7 +357,7 @@
         const filteredGroups = virtualDevices.filter(group => {
             if (!searchTerm) return true;
             const nameMatch = (group.name || '').toLowerCase().includes(searchTerm);
-            const memberMatch = (group.members || []).some(m => 
+            const memberMatch = (group.members || []).some(m =>
                 (m.name || '').toLowerCase().includes(searchTerm)
             );
             return nameMatch || memberMatch;
@@ -360,7 +365,7 @@
 
         // Empty state
         if (virtualDevices.length === 0) {
-            grid.innerHTML = `
+            resetGrid(grid, `
                 <div class="empty-state" style="grid-column: 1 / -1;">
                     <i class="fas fa-layer-group empty-state-icon"></i>
                     <h3 class="empty-state-title">No groups yet</h3>
@@ -370,25 +375,23 @@
                         Create First Group
                     </button>
                 </div>
-            `;
+            `);
             return;
         }
 
         // No search results
         if (filteredGroups.length === 0) {
-            grid.innerHTML = `
+            resetGrid(grid, `
                 <div class="empty-state" style="grid-column: 1 / -1;">
                     <i class="fas fa-search empty-state-icon"></i>
                     <h3 class="empty-state-title">No matches</h3>
                     <p class="empty-state-text">No groups match your search.</p>
                 </div>
-            `;
+            `);
             return;
         }
 
-        // Render cards
-        const html = filteredGroups.map(group => createGroupCard(group)).join('');
-        grid.innerHTML = html;
+        patchKeyedGrid(grid, filteredGroups, g => g.uuid, createGroupCard);
     }
 
     function createGroupCard(group) {
@@ -396,7 +399,7 @@
         const onlineCount = members.filter(m => m.status === 'online' || m.status === 'playing').length;
         const isPlaying = group.status === 'playing' || members.some(m => m.status === 'playing');
         const isLinked = group.binded;
-        
+
         // Status class
         let statusClass = 'all-offline';
         let statusText = 'All Offline';
@@ -407,16 +410,16 @@
             statusClass = 'degraded';
             statusText = 'Partial';
         }
-        
+
         // Heterogeneous badge
-        const heterogeneousBadge = group.is_heterogeneous 
-            ? '<span class="heterogeneous-badge"><i class="fas fa-cubes"></i> Mixed</span>' 
+        const heterogeneousBadge = group.is_heterogeneous
+            ? '<span class="heterogeneous-badge"><i class="fas fa-cubes"></i> Mixed</span>'
             : '';
-        
+
         // Safe values
         const safeName = escapeHtml(group.name || 'Unnamed Group');
         const safeUuid = escapeHtml(group.uuid || '');
-        
+
         // Members chips
         const memberChips = members.slice(0, 5).map(m => {
             const isOnline = m.status === 'online' || m.status === 'playing';
@@ -427,18 +430,18 @@
                 </span>
             `;
         }).join('');
-        
+
         const moreCount = members.length > 5 ? members.length - 5 : 0;
         const moreChip = moreCount > 0 ? `<span class="member-chip">+${moreCount} more</span>` : '';
-        
+
         // Now Playing section
         let nowPlayingHtml = '';
         const track = group.current_track || {};
         if (isPlaying && track.title) {
-            const progress = group.current_session_ms || 0;
+            const progress = group.elapsed_ms || 0;
             const duration = track.duration || 0;
-            const progressPercent = duration > 0 ? (progress / duration) * 100 : 0;
-            
+            const progressPercent = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
+
             nowPlayingHtml = `
                 <div class="now-playing">
                     <div class="now-playing-label">Now Playing</div>
@@ -453,31 +456,31 @@
                     </div>
                 </div>
                 <div class="playback-controls">
-                    <button class="playback-btn" onclick="event.stopPropagation(); sendCommand('${safeUuid}', 'previous')" aria-label="Previous track">
+                    <button class="playback-btn" data-action="prev" aria-label="Previous track">
                         <i class="fas fa-step-backward"></i>
                     </button>
-                    <button class="playback-btn main" onclick="event.stopPropagation(); sendCommand('${safeUuid}', 'pause')" aria-label="Pause">
+                    <button class="playback-btn main" data-action="pause" aria-label="Pause">
                         <i class="fas fa-pause"></i>
                     </button>
-                    <button class="playback-btn" onclick="event.stopPropagation(); sendCommand('${safeUuid}', 'next')" aria-label="Next track">
+                    <button class="playback-btn" data-action="next" aria-label="Next track">
                         <i class="fas fa-step-forward"></i>
                     </button>
                 </div>
             `;
         }
-        
+
         // Action button
         let actionButton = '';
         if (!isLinked) {
             actionButton = `
-                <button class="control-btn primary" onclick="event.stopPropagation(); checkLinked('${safeUuid}', '${escapeHtml(group.pin_id || '')}')">
+                <button class="control-btn primary" data-action="link">
                     <i class="fas fa-link"></i>
                     Link
                 </button>
             `;
         } else if (!isPlaying) {
             actionButton = `
-                <button class="control-btn" onclick="event.stopPropagation(); relinkGroup('${safeUuid}')">
+                <button class="control-btn" data-action="relink">
                     <i class="fas fa-sync"></i>
                     Relink
                 </button>
@@ -485,8 +488,9 @@
         }
 
         return `
-            <div class="device-card ${isPlaying ? 'playing' : ''} ${isLinked && !isPlaying ? 'linked' : ''}" 
-                 onclick="showGroupDetails('${safeUuid}')">
+            <div class="device-card ${isPlaying ? 'playing' : ''} ${isLinked && !isPlaying ? 'linked' : ''}"
+                 data-uuid="${safeUuid}" data-action="details"
+                 role="button" tabindex="0" aria-label="${safeName} details">
                 <div class="device-header">
                     <div class="device-icon">
                         <i class="fas fa-layer-group"></i>
@@ -505,10 +509,10 @@
                 ${nowPlayingHtml}
                 <div class="card-actions">
                     ${actionButton}
-                    <button class="icon-btn" onclick="event.stopPropagation(); openEditModal('${safeUuid}')" title="Edit" aria-label="Edit group">
+                    <button class="icon-btn" data-action="edit" title="Edit" aria-label="Edit group">
                         <i class="fas fa-pen"></i>
                     </button>
-                    <button class="icon-btn danger" onclick="event.stopPropagation(); deleteGroup('${safeUuid}')" title="Delete" aria-label="Delete group">
+                    <button class="icon-btn danger" data-action="delete" title="Delete" aria-label="Delete group">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -519,15 +523,8 @@
     // Playback Commands
     async function sendCommand(uuid, command) {
         try {
-            const response = await fetch(`/api/player/playback/${command}?commandID=0&type=music`, {
-                method: 'GET',
-                headers: {
-                    'X-Plex-Target-Client-Identifier': uuid,
-                    'X-Plex-Client-Identifier': 'sonoplay'
-                }
-            });
-            if (!response.ok) throw new Error('Command failed');
-            fetchGroups();
+            await sendPlaybackCommand(uuid, command);
+            setTimeout(fetchGroups, 500);
         } catch (error) {
             console.error('Command error:', error);
             Swal.fire('Error', 'Failed to send command', 'error');
@@ -535,169 +532,24 @@
     }
 
     // Link/Relink
-    async function checkLinked(uuid, pinId = null) {
-        try {
-            const formData = new FormData();
-            formData.append('uuid', uuid);
-            if (pinId) formData.append('pin_id', pinId);
-            formData.append('check_status', 'true');
-            
-            const response = await fetch('/', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) throw new Error('Network response was not ok');
-            
-            const data = await response.json();
-            if (data.status === 'linked') {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Linked!',
-                    text: 'Group is successfully linked to Plex',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-                fetchGroups();
-            } else {
-                // Show PIN and wait for user confirmation
-                const result = await Swal.fire({
-                    icon: 'info',
-                    title: 'Link to Plex',
-                    html: `
-                        <p>Visit <a href="https://plex.tv/link" target="_blank" style="color: #e5a00d; font-weight: bold;">plex.tv/link</a></p>
-                        <p style="margin-top: 1rem;">Enter this code:</p>
-                        <div style="font-size: 2rem; font-weight: bold; letter-spacing: 0.2rem; font-family: 'JetBrains Mono', monospace; margin: 1rem 0;">${escapeHtml(String(data.pin))}</div>
-                    `,
-                    confirmButtonText: "I've Entered the Code",
-                    showCancelButton: true,
-                    cancelButtonText: 'Cancel'
-                });
-                
-                if (result.isConfirmed) {
-                    // Verify linking with pin_id
-                    Swal.fire({
-                        title: 'Checking...',
-                        allowOutsideClick: false,
-                        didOpen: () => Swal.showLoading()
-                    });
-                    
-                    const verifyForm = new FormData();
-                    verifyForm.append('uuid', uuid);
-                    verifyForm.append('pin_id', data.pin_id);
-                    
-                    const verifyResponse = await fetch('/', {
-                        method: 'POST',
-                        body: verifyForm
-                    });
-                    
-                    if (verifyResponse.ok) {
-                        const verifyData = await verifyResponse.json();
-                        if (verifyData.status === 'linked') {
-                            Swal.fire({
-                                icon: 'success',
-                                title: 'Linked!',
-                                text: 'Group is now connected to Plex',
-                                timer: 2000,
-                                showConfirmButton: false
-                            });
-                        } else {
-                            Swal.fire({
-                                icon: 'warning',
-                                title: 'Not Yet Linked',
-                                text: 'Please enter the code at plex.tv/link and try again.'
-                            });
-                        }
-                    }
-                }
-                fetchGroups();
-            }
-        } catch (error) {
-            console.error('Error checking link status:', error);
-            Swal.fire('Error', 'Failed to check link status', 'error');
-        }
+    async function checkLinked(uuid) {
+        await runPlexPinFlow(uuid, { mode: 'link', subject: 'Group' });
+        fetchGroups();
     }
 
     async function relinkGroup(uuid) {
-        try {
-            const formData = new FormData();
-            formData.append('uuid', uuid);
-            formData.append('relink', 'true');
-            
-            const response = await fetch('/', {
-                method: 'POST',
-                body: formData
-            });
-            
-            if (!response.ok) throw new Error('Network response was not ok');
-            
-            const data = await response.json();
-            
-            // Show PIN and wait for user confirmation
-            const result = await Swal.fire({
-                icon: 'info',
-                title: 'Relink to Plex',
-                html: `
-                    <p>Visit <a href="https://plex.tv/link" target="_blank" style="color: #e5a00d; font-weight: bold;">plex.tv/link</a></p>
-                    <p style="margin-top: 1rem;">Enter this new code:</p>
-                    <div style="font-size: 2rem; font-weight: bold; letter-spacing: 0.2rem; font-family: 'JetBrains Mono', monospace; margin: 1rem 0;">${escapeHtml(String(data.pin))}</div>
-                `,
-                confirmButtonText: "I've Entered the Code",
-                showCancelButton: true,
-                cancelButtonText: 'Cancel'
-            });
-            
-            if (result.isConfirmed) {
-                // Verify linking with pin_id
-                Swal.fire({
-                    title: 'Checking...',
-                    allowOutsideClick: false,
-                    didOpen: () => Swal.showLoading()
-                });
-                
-                const verifyForm = new FormData();
-                verifyForm.append('uuid', uuid);
-                verifyForm.append('pin_id', data.pin_id);
-                
-                const verifyResponse = await fetch('/', {
-                    method: 'POST',
-                    body: verifyForm
-                });
-                
-                if (verifyResponse.ok) {
-                    const verifyData = await verifyResponse.json();
-                    if (verifyData.status === 'linked') {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Relinked!',
-                            text: 'Group is now connected to Plex',
-                            timer: 2000,
-                            showConfirmButton: false
-                        });
-                    } else {
-                        Swal.fire({
-                            icon: 'warning',
-                            title: 'Not Yet Linked',
-                            text: 'Please enter the code at plex.tv/link and try again.'
-                        });
-                    }
-                }
-            }
-            fetchGroups();
-        } catch (error) {
-            console.error('Error relinking group:', error);
-            Swal.fire('Error', 'Failed to relink group', 'error');
-        }
+        await runPlexPinFlow(uuid, { mode: 'relink', subject: 'Group' });
+        fetchGroups();
     }
 
     // Group Details Modal
     function showGroupDetails(uuid) {
         const group = virtualDevices.find(g => g.uuid === uuid);
         if (!group) return;
-        
+
         const safeName = escapeHtml(group.name || 'Unnamed Group');
         const members = group.members || [];
-        
+
         const memberRows = members.map(m => {
             const isOnline = m.status === 'online' || m.status === 'playing';
             return `
@@ -713,7 +565,7 @@
                 </div>
             `;
         }).join('');
-        
+
         Swal.fire({
             title: safeName,
             html: `
@@ -764,7 +616,7 @@
                         <label class="swal-input-label">Group Name</label>
                         <input type="text" id="swal-group-name" class="swal-text-input" placeholder="Living Room Speakers" value="${escapeHtml(initialName)}">
                     </div>
-                    
+
                     <div class="editor-columns">
                         <div>
                             <div class="editor-column-title">Available Devices</div>
@@ -775,7 +627,7 @@
                             <div id="swal-selected-list" class="device-list"></div>
                         </div>
                     </div>
-                    
+
                     <div id="swal-capability-warning" class="capability-info" style="display: none;">
                         <div style="display: flex; align-items: flex-start; gap: var(--space-sm);">
                             <i class="fas fa-exclamation-triangle" style="color: var(--warning); margin-top: 2px;"></i>
@@ -816,7 +668,7 @@
     function renderEditorLists() {
         const availableEl = document.getElementById('swal-available-list');
         const selectedEl = document.getElementById('swal-selected-list');
-        
+
         if (!availableEl || !selectedEl) return;
 
         // Available devices
@@ -832,7 +684,7 @@
                             <div class="device-list-model">${escapeHtml(device.model || 'DLNA Device')}</div>
                         </div>
                         <div class="device-list-actions">
-                            <button class="icon-btn" onclick="addMember('${device.uuid}')" ${isSelected ? 'disabled' : ''}>
+                            <button class="icon-btn" onclick="addMember('${device.uuid}')" ${isSelected ? 'disabled' : ''} aria-label="Add ${escapeHtml(device.name)}">
                                 <i class="fas fa-plus"></i>
                             </button>
                         </div>
@@ -845,17 +697,15 @@
         if (selectedMembers.length === 0) {
             selectedEl.innerHTML = '<div style="padding: var(--space-md); color: var(--text-tertiary); text-align: center;">No members selected</div>';
         } else {
-            let mismatchFound = false;
             const expectedHash = getExpectedCapabilityHash();
-            
+
             selectedEl.innerHTML = selectedMembers.map((uuid, index) => {
                 const device = physicalDevices.find(d => d.uuid === uuid);
                 const name = device ? device.name : uuid;
                 const model = device ? device.model : '';
-                
+
                 let warning = '';
                 if (device && expectedHash && device.capabilities_hash !== expectedHash) {
-                    mismatchFound = true;
                     // Info badge instead of warning - heterogeneous groups are supported
                     warning = '<div style="font-size: 0.7rem; color: var(--info);"><i class="fas fa-info-circle"></i> Different type</div>';
                 }
@@ -868,20 +718,20 @@
                             ${warning}
                         </div>
                         <div class="device-list-actions">
-                            <button class="icon-btn" onclick="moveMember('${uuid}', -1)" ${index === 0 ? 'disabled' : ''}>
+                            <button class="icon-btn" onclick="moveMember('${uuid}', -1)" ${index === 0 ? 'disabled' : ''} aria-label="Move up">
                                 <i class="fas fa-arrow-up"></i>
                             </button>
-                            <button class="icon-btn" onclick="moveMember('${uuid}', 1)" ${index === selectedMembers.length - 1 ? 'disabled' : ''}>
+                            <button class="icon-btn" onclick="moveMember('${uuid}', 1)" ${index === selectedMembers.length - 1 ? 'disabled' : ''} aria-label="Move down">
                                 <i class="fas fa-arrow-down"></i>
                             </button>
-                            <button class="icon-btn danger" onclick="removeMember('${uuid}')">
+                            <button class="icon-btn danger" onclick="removeMember('${uuid}')" aria-label="Remove">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
                     </div>
                 `;
             }).join('');
-            
+
             // Show sync warning whenever 2+ devices are selected (sync limitation applies to all multi-device groups)
             const warningEl = document.getElementById('swal-capability-warning');
             if (warningEl) {
@@ -915,7 +765,7 @@
     window.moveMember = (uuid, direction) => {
         const index = selectedMembers.indexOf(uuid);
         if (index === -1) return;
-        
+
         const newIndex = index + direction;
         if (newIndex >= 0 && newIndex < selectedMembers.length) {
             [selectedMembers[index], selectedMembers[newIndex]] = [selectedMembers[newIndex], selectedMembers[index]];
@@ -927,7 +777,7 @@
         try {
             const url = editingUuid ? `/api/virtual-devices/${editingUuid}` : '/api/virtual-devices';
             const method = editingUuid ? 'PUT' : 'POST';
-            
+
             const response = await fetch(url, {
                 method: method,
                 headers: { 'Content-Type': 'application/json' },
@@ -935,8 +785,13 @@
             });
 
             if (!response.ok) {
-                const detail = await response.json();
-                throw new Error(detail.message || 'Failed to save group');
+                // FastAPI nests structured errors under "detail"
+                let message = 'Failed to save group';
+                try {
+                    const body = await response.json();
+                    message = body.detail?.message || body.message || message;
+                } catch (e) {}
+                throw new Error(message);
             }
 
             await fetchGroups();
@@ -971,7 +826,7 @@
         try {
             const response = await fetch(`/api/virtual-devices/${uuid}`, { method: 'DELETE' });
             if (!response.ok) throw new Error('Failed to delete group');
-            
+
             await fetchGroups();
             Swal.fire({
                 icon: 'success',
@@ -987,6 +842,35 @@
             });
         }
     }
+
+    // Delegated card actions (no inline onclick on cards; survives patching)
+    function handleGroupAction(target) {
+        const actionEl = target.closest('[data-action]');
+        if (!actionEl) return;
+        const card = actionEl.closest('.device-card');
+        const uuid = card ? card.dataset.uuid : null;
+        if (!uuid) return;
+        switch (actionEl.dataset.action) {
+            case 'details': showGroupDetails(uuid); break;
+            case 'link': checkLinked(uuid); break;
+            case 'relink': relinkGroup(uuid); break;
+            case 'edit': openEditModal(uuid); break;
+            case 'delete': deleteGroup(uuid); break;
+            case 'prev': sendCommand(uuid, 'previous'); break;
+            case 'pause': sendCommand(uuid, 'pause'); break;
+            case 'next': sendCommand(uuid, 'next'); break;
+        }
+    }
+
+    const groupGridEl = document.getElementById('groupGrid');
+    groupGridEl.addEventListener('click', (e) => handleGroupAction(e.target));
+    groupGridEl.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        if (e.target.classList && e.target.classList.contains('device-card')) {
+            e.preventDefault();
+            handleGroupAction(e.target);
+        }
+    });
 
     // Search handler
     document.getElementById('groupSearchInput')?.addEventListener('input', () => {
