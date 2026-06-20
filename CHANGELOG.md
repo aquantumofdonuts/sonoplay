@@ -9,17 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.2.0] - 2026-06-20
 
-Focused stability release with playback and lifecycle fixes, plus UI and release packaging updates.
+Stability-focused release from the dev branch, centered on playback continuity, transport reliability, and runtime lifecycle hardening.
 
 See [full release notes](docs/release_notes/v1.2.0) for details.
 
-### Highlights
+### Fixed
 
-- Fixed end-of-track playback stopping by correcting auto-next STOPPED handling
-- Hardened state polling and transport sequencing to reduce missed transitions and stale-stop races
-- Improved DLNA subscribe loop ownership and notify task cleanup to prevent waiter buildup
-- Reduced event-loop blocking by moving stats persistence off the async hot path
-- Added dependency and static asset updates used by the refreshed web UI
+- End-of-track playback stopping instead of advancing to the next queue item
+- Stale Plex stop commands interrupting auto-next transitions
+- Auto-next double-fire behavior and end-of-queue stop handling edge cases
+- Event loop descriptor leak/exhaustion risks in background state loop teardown
+- Potential lost updates during concurrent settings read-modify-write mutations
+
+### Changed
+
+- State polling now tolerates partial SOAP failures without dropping the full poll cycle
+- Transport operations can be cancelled immediately on stop requests
+- Play command timing now prefers capability/readiness checks over fixed delay sleeps
+- Subscribe loop ownership tracking prevents old loops from resuming beside new loops
+- Pending notify wait tasks are cancelled/drained between iterations to avoid buildup
+- Stats persistence moved off the async hot path to reduce event-loop stalls
+
+### Documentation
+
+- README rewritten to be concise and operationally focused
+- Version metadata updated to 1.2.0 in runtime and package manifests
 
 ---
 
