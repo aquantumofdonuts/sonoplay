@@ -1,0 +1,70 @@
+# Release Notes: v1.2.1
+
+Release date: 2026-06-20
+
+## Overview
+
+SonoPlay v1.2.1 is a stability-focused release from the current dev branch. The main goal is to stop intermittent playback termination and harden transport/state synchronization with DLNA targets under real-world network and device behavior.
+
+## Major Improvements
+
+### Playback Continuity and Auto-Next
+
+- Fixed a critical auto-next edge case where playback could stop after a track ended instead of advancing.
+- Improved STOPPED transition handling so natural track completion and explicit user stop commands are handled differently and correctly.
+- Added stale stop suppression during auto-next transitions to avoid Plex-side races killing next-track start.
+
+### Transport Operation Reliability
+
+- Added cancel signaling for in-flight transport operations so user stop requests do not appear hung while retries/timeouts are still running.
+- Improved transport settling logic and timing to reduce false transition failures on slower DLNA stacks.
+- Added readiness check before Play where supported, replacing fixed sleep-based timing.
+
+### DLNA State and Event Loop Stability
+
+- Poll cycles now tolerate partial SOAP/UPnP failures without discarding all results from that cycle.
+- Event loop and thread lifecycle cleanup was hardened to prevent descriptor leaks and reduce teardown issues.
+- Idle-state polling behavior is more conservative to reduce unnecessary SOAP traffic while preserving responsiveness.
+
+### Subscription and Notification Robustness
+
+- Added ownership tokening for subscribe loops to prevent older loops from resuming alongside newer ones.
+- Notification wait tasks are now cancelled and drained between iterations to prevent pending task buildup.
+
+### Persistence and Concurrency Safety
+
+- Device stats persistence moved off the async hot path to avoid blocking the event loop on disk syncs.
+- Read-modify-write settings updates now hold lock coverage across the full mutation window to prevent lost concurrent writes.
+
+### Queue and Integration Fixes
+
+- Queue fetch key handling adjusted to avoid ownership mismatches that could invalidate queue reads.
+- Additional guards and null-safe cleanup logic reduce destructor-time exceptions in edge teardown paths.
+
+## Web and Packaging Changes
+
+- Refreshed shared UI/static asset layout and template updates for current interface behavior.
+- Added bundled vendor assets/webfonts used by the web UI.
+
+## Versioning
+
+- Project/package version: 1.2.1
+- Runtime banner version: v1.2.1
+
+## Upgrade Notes
+
+- No migration steps are required for existing config/state.
+- Recommended deployment update path:
+
+```bash
+docker pull ghcr.io/aquantumofdonuts/sonoplay:v1.2.1
+docker compose up -d
+```
+
+## Full Commit Scope Since v1.1.0
+
+- 586e48f fix: prevent stale Plex stop from killing auto-next playback
+- fc9c85b fix: prevent auto-next double-fire and unblock end-of-queue stop
+- 92fe54e fix: close event loop in background_loop to prevent FD leak
+- d0f3a2a fix: use local loop var in background_loop to prevent FD exhaustion
+- 35d85d0 fix: playback stopping after track ends + several reliability fixes
