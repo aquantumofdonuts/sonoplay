@@ -7,6 +7,22 @@ The latest version is always available by pulling the `latest` tag.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.0] - 2026-06-20
+
+Focused stability release with playback and lifecycle fixes, plus UI and release packaging updates.
+
+See [full release notes](docs/release_notes/v1.2.0) for details.
+
+### Highlights
+
+- Fixed end-of-track playback stopping by correcting auto-next STOPPED handling
+- Hardened state polling and transport sequencing to reduce missed transitions and stale-stop races
+- Improved DLNA subscribe loop ownership and notify task cleanup to prevent waiter buildup
+- Reduced event-loop blocking by moving stats persistence off the async hot path
+- Added dependency and static asset updates used by the refreshed web UI
+
+---
+
 ## [v1.1.0] - 2026-03-07
 
 A major release covering everything from the original fork through today: virtual device groups, a modern web UI, broad DLNA device compatibility, security hardening, accessibility, and stability improvements.
@@ -40,4 +56,6 @@ Based on commit `578399ead0fe606f562a897640a3c522226bdc22`.
 
 ---
 
+[v1.2.0]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.1.0...v1.2.0
+[v1.1.0]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/songchenwen/plexdlnaplayer/tree/578399ead0fe606f562a897640a3c522226bdc22

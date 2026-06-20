@@ -1,40 +1,33 @@
 # SonoPlay
 
-> **The missing bridge between Plexamp and your DLNA speakers**
+Bridge Plexamp to DLNA/UPnP renderers on your local network.
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED.svg)](https://www.docker.com/)
 
----
+## What It Does
 
-## The Problem
+Plexamp cannot natively cast to DLNA/UPnP targets. SonoPlay exposes your DLNA devices as Plex players so they appear in Plexamp's cast list.
 
-You love Plexamp. You have great DLNA speakers (Sonos, Yamaha, Denon, smart TVs). But **Plexamp can't cast to DLNA/UPnP devices**.
+Data path:
 
-The community has been asking for this for years:
-
-> *"Frustrating that PlexAmp can't render to UPnP devices... I SO VERY BADLY wish PlexAmp would add UPnP support"*
-
-> *"Is there a way to get PlexAmp to find network devices?"*
-
-## The Solution
-
-**SonoPlay makes your DLNA speakers appear as Plex players.** Cast from Plexamp to any DLNA device on your network.
-
-```
-Plexamp → SonoPlay → Your DLNA Speakers
+```text
+Plexamp -> SonoPlay -> DLNA/UPnP speaker
 ```
 
-That's it. No complicated setup. No Raspberry Pi projects. Just works.
+## Key Features
 
----
+- DLNA/UPnP device discovery
+- Plex device registration via Plex.tv link flow
+- Playback command translation (play, pause, seek, queue navigation)
+- Virtual device groups for multi-room playback
+- Web UI for linking and device management
+- Docker-first deployment
 
 ## Quick Start
 
-
-
-### Docker (Recommended)
+### Docker (recommended)
 
 ```bash
 docker run -d \
@@ -45,7 +38,7 @@ docker run -d \
   ghcr.io/aquantumofdonuts/sonoplay:latest
 ```
 
-Or with Docker Compose:
+### Docker Compose
 
 ```bash
 git clone --branch stable https://github.com/aquantumofdonuts/sonoplay.git
@@ -53,119 +46,70 @@ cd sonoplay
 docker compose up -d
 ```
 
-### Configuration (Optional)
+### First Use
 
-SonoPlay works out of the box with sensible defaults. To customize, copy `.env.example` to `.env`:
+1. Open http://your-server:32488
+2. Link one or more devices to Plex
+3. In Plexamp, open cast targets and select the linked device
+
+## Configuration
+
+Most installs work with defaults. To customize:
 
 ```bash
 cp .env.example .env
-# Edit .env with your settings
 ```
 
-Available settings:
-- `HTTP_PORT` - Web UI port (default: 32488)
-- `HOST_IP` - Your server's IP (auto-detected if not set)
-- `CLIENT_PROFILE` - Plex transcoding profile (Sonos, DLNA, Chromecast, etc.)
+Common settings:
 
-### Then:
+- HTTP_PORT: Web UI/API port (default 32488)
+- HOST_IP: Explicit host IP (auto-detected when unset)
+- CLIENT_PROFILE: Plex transcoding profile
 
-1. Open `http://your-server:32488`
-2. Click "Link to Plex" on your speaker
-3. Open Plexamp → Cast → Select your speaker
-4. Enjoy 🎵
-
----
-
-## Features
-
-### 🔊 DLNA Device Discovery
-Automatically finds all DLNA/UPnP speakers, receivers, and smart TVs on your network.
-
-### 🎵 Full Plexamp Integration
-- PIN-based Plex.tv authentication
-- Automatic Plex server discovery
-- Play queue support with track info
-- Real-time playback status sync
-
-### 🏠 Multi-Room Audio
-Create virtual device groups for synchronized playback across multiple speakers.
-
-### 🎨 Modern Web Interface
-- Device management dashboard
-- Real-time status updates
-- Mobile-friendly design
-
-### 🐳 Docker-Ready
-One command deployment with persistent storage and automatic restarts.
-
----
-
-## Supported Devices
-
-SonoPlay works with any DLNA/UPnP compatible device:
-
-- **Sonos** speakers (via DLNA mode)
-- **Yamaha** MusicCast receivers
-- **Denon/Marantz** HEOS devices
-- **Samsung/LG/Sony** smart TVs
-- **Chromecast Audio** (via DLNA bridge)
-- Any UPnP MediaRenderer
-
----
+Note: docker-compose.yaml uses env_file.required and needs Docker Compose v2.17+.
 
 ## Requirements
 
-- Docker (recommended) or Python 3.12+
-- Docker Compose v2.17+ (if using `docker compose`)
-- Plex Media Server on your network
-- Plex Pass (for Plexamp)
-- DLNA-compatible speakers/devices
+- Docker (preferred) or Python 3.11+
+- Plex Media Server on the same network
+- Plex Pass for Plexamp
+- DLNA/UPnP MediaRenderer-compatible targets
 
-> **Note:** The `docker-compose.yaml` uses modern syntax (`env_file.required`) that requires Docker Compose v2.17 or later. Check your version with `docker compose version`.
+## Supported Devices
 
----
+Any standards-compliant DLNA/UPnP renderer, including common Sonos, Yamaha, Denon/Marantz, and smart TV implementations.
 
+## Project Docs
 
+- API: docs/API.md
+- Architecture: docs/ARCHITECTURE.md
+- Detailed docs: docs/README-detailed.md
+- Release notes: docs/release_notes/
 
-## How It Works
+## Development
 
-1. **Discovery**: SonoPlay uses SSDP to find DLNA devices and Plex GDM to announce them as Plex players
-2. **Linking**: When you link a device to Plex.tv, Plexamp can discover it
-3. **Streaming**: Plexamp sends playback commands to SonoPlay, which translates them to DLNA control commands
-4. **Transcoding**: Audio is automatically transcoded to formats your device supports
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
 
----
+Run tests:
 
-
-## FAQ
-
-### Why can't Plexamp cast to DLNA natively?
-Plex chose not to implement DLNA casting in Plexamp. This has been a community request since 2020.
-
-### Does this replace the SonoPlay server?
-No. Plex's DLNA server lets DLNA devices browse your library. SonoPlay does the opposite—it lets Plex apps control DLNA devices.
-
-### Do I need Plex Pass?
-Plexamp requires Plex Pass. SonoPlay itself is free and open source.
-
-### What about gapless playback?
-Gapless playback depends on your DLNA device's capabilities. Most modern receivers support it.
-
----
+```bash
+python3 -m pytest tests/ -q
+```
 
 ## Contributing
 
-Issues and PRs welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
+Issues and PRs are welcome.
 
 ## Credits
 
-Originally forked from [plexdlnaplayer](https://github.com/songchenwen/plexdlnaplayer) by songchenwen.
-
----
+Originally forked from plexdlnaplayer by songchenwen.
 
 ## License
 
-GPL v3 - See [LICENSE](LICENSE) for details.
+GPL-3.0-or-later. See LICENSE.
 
