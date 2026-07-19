@@ -95,7 +95,11 @@ class PlexLib(object):
         self.device = None
 
     def build_url(self, resource, token=True):
-        url = f"{self.protocol}://{self.address}:{self.port}{resource}"
+        if settings.pms_address:
+            # Bypass .plex.direct DNS (broken by firewall) — use plain HTTP to LAN IP.
+            url = f"http://{settings.pms_address}:{self.port}{resource}"
+        else:
+            url = f"{self.protocol}://{self.address}:{self.port}{resource}"
         if token:
             if "?" in resource:
                 url += f"&X-Plex-Token={self.token}"

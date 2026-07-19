@@ -7,6 +7,7 @@ import math
 logger = logging.getLogger(__name__)
 
 from utils import g
+from settings import settings
 
 UNLIMITED = math.inf
 
@@ -216,7 +217,10 @@ class PlayQueue(object):
         # Sonos requires a recognized audio file extension
         base_path = "/audio/:/transcode/universal/start.mp3"
         
-        return self.plex_lib.build_url(f"{base_path}?{query}")
+        return self._build_stream_url(f"{base_path}?{query}")
+
+    def _build_stream_url(self, resource: str) -> str:
+        return self.plex_lib.build_url(resource, token=True)
 
     def url_for_track(self, track, force_transcode=False):
         """
@@ -233,15 +237,13 @@ class PlayQueue(object):
             logger.info("Using Plex transcode for high-bitrate track: %s", getattr(track, 'title', 'Unknown'))
             return self.build_transcode_url(track)
         
-        return self.plex_lib.build_url(track.Media[0].Part[0].key)
+        return self._build_stream_url(track.Media[0].Part[0].key)
     
     def is_track_playable(self, track):
         """
         Check if a track is playable based on bitrate/sample rate thresholds.
         Returns True if playable, False if it should be skipped.
         """
-        from settings import settings
-        
         # Get configured thresholds
         threshold_kbps = settings.audio_transcode_threshold_kbps
         sample_limit_hz = settings.audio_transcode_max_sample_rate_hz

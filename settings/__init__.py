@@ -120,6 +120,11 @@ class Settings(BaseSettings):
     dlna_subscribe_timeout: int = 120   # DLNA event subscription timeout
     adapter_idle_interval: int = 60     # Seconds between state checks when idle
     pin_cache_max_size: int = 100       # Maximum cached Plex PIN login entries
+    # Override the PMS address used in stream URLs sent to DLNA speakers.
+    # Needed when Plexamp connects to PMS via WAN/external IP (remote access mode)
+    # but hairpin NAT is unavailable — speakers can't reach PMS via WAN IP.
+    # Set to PMS's LAN IP (e.g. PMS_ADDRESS=192.168.1.100) to force local routing.
+    pms_address: str | None = None
 
     def __init__(self, **values):
         super().__init__(**values)
