@@ -1,0 +1,48 @@
+# Release Notes: v1.2.2
+
+Release date: 2026-07-19
+
+## Overview
+
+SonoPlay v1.2.2 is a targeted fix for a casting failure that surfaces after replacing a firewall that had hairpin NAT (NAT loopback) configured. When Plexamp connects to a Plex Media Server using Plex's `.plex.direct` HTTPS addressing, the hostname must resolve via Plex's public DNS. A new firewall that intercepts or drops those DNS queries causes the resolution to fail, breaking all casting — both Sonoplay's own play queue fetches and the stream URLs delivered to DLNA speakers.
+
+## What Changed
+
+### New: `PMS_ADDRESS` environment variable
+
+A new optional setting, `PMS_ADDRESS`, can be set to the Plex Media Server's LAN IP address. When configured, Sonoplay bypasses `.plex.direct` DNS entirely and contacts PMS directly via plain HTTP at the specified IP. This applies uniformly to:
+
+- Play queue fetches (Sonoplay → PMS)
+- Stream URLs handed to DLNA speakers (e.g. Sonos → PMS)
+- Timeline and transcode URLs
+
+**Usage** (add to `.env`):
+
+```env
+PMS_ADDRESS=192.168.1.x
+```
+
+Replace `192.168.1.x` with PMS's actual LAN IP. Leave unset if DNS resolution is working normally — the setting is a no-op when absent.
+
+## Root Cause
+
+Plex uses subdomains of `*.plex.direct` to provide valid TLS certificates for local HTTPS connections. The hostname encodes the server's LAN IP (e.g. `192-168-1-22.abc123.plex.direct` → `192.168.1.22`) and resolves via Plex's authoritative DNS. If a firewall blocks or intercepts outbound DNS queries to Plex's resolvers, the lookup fails with `No address associated with hostname`, making every PMS connection time out. The old workaround — hairpin NAT — masked this by allowing connections via the WAN IP; without it, no path to PMS exists.
+
+The fix avoids the DNS dependency entirely for affected setups.
+
+## Versioning
+
+- Project/package version: 1.2.2
+- Runtime banner version: v1.2.2
+
+## Upgrade Notes
+
+No migration steps required. If you are affected by the casting issue described above, add `PMS_ADDRESS=<your PMS LAN IP>` to your `.env` and restart.
+
+```bash
+docker compose up -d --build
+```
+
+## Commit Since v1.2.1
+
+- f9fd317 dlna fix
