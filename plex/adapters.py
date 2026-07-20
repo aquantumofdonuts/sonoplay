@@ -974,6 +974,7 @@ class PlexDlnaAdapter(object):
         async with self._transport_lock:
             self._transport_cancel_requested = False
             url = self.queue.url_for_track(track, force_transcode=needs_transcode)
+            metadata = self.queue.metadata_for_track(track, url, force_transcode=needs_transcode)
             operation_id = self._start_transport_operation(url)
             self._active_operation_target_paused = paused
             try:
@@ -984,7 +985,7 @@ class PlexDlnaAdapter(object):
                     if attempt > 1:
                         logger.debug("%s retrying transport load attempt %d for %s", self.dlna.name, attempt, url)
                         self._reset_active_operation_tracking()
-                    await self._issue_transport_commands(url, offset=offset if attempt == 1 else 0, paused=paused)
+                    await self._issue_transport_commands(url, metadata, offset=offset if attempt == 1 else 0, paused=paused)
                     settled = await self._await_transport_settle(operation_id)
                     if self._transport_cancel_requested:
                         logger.info("%s transport operation %d cancelled by stop", self.dlna.name, operation_id)
@@ -1009,7 +1010,7 @@ class PlexDlnaAdapter(object):
             "current_uri": self._active_target_uri
         }
 
-    async def _issue_transport_commands(self, url: str, *, offset: int, paused: bool) -> None:
+    async def _issue_transport_commands(self, url: str, metadata: str = "", *, offset: int, paused: bool) -> None:
         self.state.update(state="TRANSITIONING")
         self.state.check_all_next_loop = True
         if url == self.state.current_uri:
@@ -1017,7 +1018,7 @@ class PlexDlnaAdapter(object):
         else:
             self.state.update(uri=url)
         logger.debug("%s SetAVTransportURI: %s", self.dlna.name, url)
-        await self.dlna.SetAVTransportURI(url)
+        await self.dlna.SetAVTransportURI({"CurrentURI": url, "CurrentURIMetaData": metadata})
         if offset != 0:
             self.state.update(position=str(timedelta(milliseconds=offset)))
             await self.dlna.Seek(str(timedelta(milliseconds=offset)))
