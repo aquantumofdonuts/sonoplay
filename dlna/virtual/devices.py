@@ -373,6 +373,8 @@ class VirtualDlnaDevice:
         else:
             uri = data
             metadata = ""
+        if not uri:
+            raise ValueError("SetAVTransportURI requires a non-empty CurrentURI")
 
         # Before starting virtual device playback, force any solo-playing members to
         # stop cleanly so the upcoming group start owns transport state entirely.

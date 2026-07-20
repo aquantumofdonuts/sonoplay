@@ -1,13 +1,21 @@
 import sys
+from unittest.mock import MagicMock
 
 # Prior test modules (test_adapter_stopped_state.py, test_audio_settings.py)
 # stub heavy transitive deps - including dotmap and xmltodict, which xml2dict
 # depends on directly - as bare MagicMock modules and never restore them. If
-# those ran first, 'utils' may already be cached bound to the stubs. Force a
-# clean reimport of everything xml2dict touches.
-_STALE_PREFIXES = ("utils", "dotmap", "xmltodict", "settings")
+# those ran first, 'utils' may already be cached bound to the stubs. Only
+# purge entries that actually look like a leftover stub, so a legitimately
+# real module already imported elsewhere is left alone (consistent with
+# test_audio_settings.py / test_xml_unescape.py).
 for _key in list(sys.modules):
-    if any(_key == _p or _key.startswith(_p + ".") for _p in _STALE_PREFIXES):
+    if not (_key in ("utils", "dotmap", "xmltodict", "settings")
+            or _key.startswith(("utils.", "dotmap.", "xmltodict.", "settings."))):
+        continue
+    _mod = sys.modules[_key]
+    if isinstance(_mod, MagicMock) or (
+        hasattr(_mod, "__file__") and _mod.__file__ and "<stub" in str(_mod.__file__)
+    ):
         del sys.modules[_key]
 
 from utils import xml2dict

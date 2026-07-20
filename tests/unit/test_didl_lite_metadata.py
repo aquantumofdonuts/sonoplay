@@ -1,13 +1,21 @@
 import sys
 import xml.etree.ElementTree as ET
+from unittest.mock import MagicMock
 
 # Prior test modules (test_adapter_stopped_state.py, test_audio_settings.py)
 # stub heavy transitive deps - including dotmap and xmltodict - as bare
-# MagicMock modules and never restore them. Force a clean reimport of
-# everything utils touches.
-_STALE_PREFIXES = ("utils", "dotmap", "xmltodict", "settings")
+# MagicMock modules and never restore them. Only purge entries that actually
+# look like a leftover stub, so a legitimately real module already imported
+# elsewhere is left alone (consistent with test_audio_settings.py /
+# test_xml_unescape.py).
 for _key in list(sys.modules):
-    if any(_key == _p or _key.startswith(_p + ".") for _p in _STALE_PREFIXES):
+    if not (_key in ("utils", "dotmap", "xmltodict", "settings")
+            or _key.startswith(("utils.", "dotmap.", "xmltodict.", "settings."))):
+        continue
+    _mod = sys.modules[_key]
+    if isinstance(_mod, MagicMock) or (
+        hasattr(_mod, "__file__") and _mod.__file__ and "<stub" in str(_mod.__file__)
+    ):
         del sys.modules[_key]
 
 from utils import build_didl_lite_metadata, mime_type_for_container

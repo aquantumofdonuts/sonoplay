@@ -1,12 +1,22 @@
 import sys
+from unittest.mock import MagicMock
 
 # Prior test modules (test_adapter_stopped_state.py, test_audio_settings.py)
 # stub heavy transitive deps - including dotmap, xmltodict, settings, plex.*
-# and dlna.* - as bare MagicMock modules and never restore them. Force a
-# clean reimport of everything plex.play_queue touches.
-_STALE_PREFIXES = ("utils", "plex", "dotmap", "xmltodict", "settings")
+# and dlna.* - as bare MagicMock modules and never restore them. Only purge
+# entries that actually look like a leftover stub, so a legitimately real
+# module already imported elsewhere (e.g. plex.adapters, loaded for real by
+# test_adapter_stopped_state.py against the real "plex" package path) is left
+# alone rather than needlessly reimported (consistent with
+# test_audio_settings.py / test_xml_unescape.py).
 for _key in list(sys.modules):
-    if any(_key == _p or _key.startswith(_p + ".") for _p in _STALE_PREFIXES):
+    if not (_key in ("utils", "plex", "dotmap", "xmltodict", "settings")
+            or _key.startswith(("utils.", "plex.", "dotmap.", "xmltodict.", "settings."))):
+        continue
+    _mod = sys.modules[_key]
+    if isinstance(_mod, MagicMock) or (
+        hasattr(_mod, "__file__") and _mod.__file__ and "<stub" in str(_mod.__file__)
+    ):
         del sys.modules[_key]
 
 from dotmap import DotMap
