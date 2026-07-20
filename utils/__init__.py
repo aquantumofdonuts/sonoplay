@@ -2,6 +2,7 @@ import aiohttp
 import re
 import xmltodict
 from dotmap import DotMap
+from html import escape as xml_escape
 
 from settings import settings
 from datetime import timedelta, datetime
@@ -95,9 +96,107 @@ def xml2dict(xml):
                                  UPNP_RC_SERVICE_TYPE: None,
                                  "http://schemas.xmlsoap.org/soap/envelope/": None,
                                  "urn:schemas-upnp-org:event-1-0": None,
-                                 "urn:schemas-upnp-org:metadata-1-0/AVT/": None
+                                 "urn:schemas-upnp-org:metadata-1-0/AVT/": None,
+                                 # SOAP Fault detail namespace for UPnPError (errorCode/
+                                 # errorDescription). Without this, xmltodict prefixes those
+                                 # keys with the full namespace URI, so callers looking up
+                                 # fault.detail.UPnPError never find it and the real error
+                                 # code/description silently disappear.
+                                 "urn:schemas-upnp-org:control-1-0": None,
                              })
     return DotMap(parsed)
+
+
+# Maps Plex Media/Part "container" values to DLNA-friendly MIME types for the
+# <res protocolInfo="..."> element in DIDL-Lite metadata.
+CONTAINER_MIME_TYPES = {
+    "mp3": "audio/mpeg",
+    "flac": "audio/flac",
+    "wav": "audio/wav",
+    "wave": "audio/wav",
+    "aac": "audio/aac",
+    "m4a": "audio/mp4",
+    "mp4": "audio/mp4",
+    "alac": "audio/mp4",
+    "ogg": "audio/ogg",
+    "oga": "audio/ogg",
+    "opus": "audio/opus",
+    "wma": "audio/x-ms-wma",
+    "ape": "audio/x-ape",
+    "aiff": "audio/aiff",
+    "aif": "audio/aiff",
+}
+
+DEFAULT_AUDIO_MIME_TYPE = "audio/mpeg"
+
+
+def mime_type_for_container(container: str | None) -> str:
+    """Map a Plex Media/Part container string to a DLNA-friendly MIME type.
+
+    Falls back to audio/mpeg (the same type used by SonoPlay's transcode
+    path) for unknown or missing containers, since that's the type most
+    DLNA renderers are guaranteed to accept.
+    """
+    if not container:
+        return DEFAULT_AUDIO_MIME_TYPE
+    return CONTAINER_MIME_TYPES.get(str(container).strip().lower(), DEFAULT_AUDIO_MIME_TYPE)
+
+
+def _format_didl_duration(duration_ms) -> str | None:
+    """Format milliseconds as a UPnP res duration string (H+:MM:SS.mmm)."""
+    if not duration_ms:
+        return None
+    try:
+        duration_ms = int(duration_ms)
+    except (TypeError, ValueError):
+        return None
+    total_seconds, millis = divmod(duration_ms, 1000)
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def build_didl_lite_metadata(*, item_id, title, url, mime_type=DEFAULT_AUDIO_MIME_TYPE,
+                              upnp_class="object.item.audioItem.musicTrack",
+                              artist=None, album=None, duration_ms=None) -> str:
+    """Build a minimal DIDL-Lite document for use as CurrentURIMetaData.
+
+    Many DLNA renderers (Samsung soundbars/TVs in particular) reject
+    SetAVTransportURI with a UPnPError SOAP Fault when CurrentURIMetaData is
+    empty, since they have no way to classify the resource without it.
+    Sonos and most other renderers tolerate empty metadata, which is why
+    this went unnoticed until a stricter renderer was tested (see issue #10).
+
+    The returned string is plain (unescaped-once) XML. It is XML-escaped a
+    second time by payload_from_template when embedded as text content of
+    the outer SOAP envelope's <CurrentURIMetaData> element - that's correct
+    and required: a DLNA control point decodes the envelope once and expects
+    the result to itself be well-formed DIDL-Lite XML.
+    """
+    def esc(value):
+        return xml_escape(str(value)) if value else ""
+
+    duration_attr = ""
+    duration = _format_didl_duration(duration_ms)
+    if duration:
+        duration_attr = f' duration="{esc(duration)}"'
+
+    creator_tag = f"<dc:creator>{esc(artist)}</dc:creator>" if artist else ""
+    artist_tag = f"<upnp:artist>{esc(artist)}</upnp:artist>" if artist else ""
+    album_tag = f"<upnp:album>{esc(album)}</upnp:album>" if album else ""
+
+    return (
+        '<DIDL-Lite xmlns="urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/" '
+        'xmlns:dc="http://purl.org/dc/elements/1.1/" '
+        'xmlns:upnp="urn:schemas-upnp-org:metadata-1-0/upnp/">'
+        f'<item id="{esc(item_id) or "0"}" parentID="-1" restricted="1">'
+        f'<dc:title>{esc(title)}</dc:title>'
+        f'{creator_tag}{artist_tag}{album_tag}'
+        f'<upnp:class>{esc(upnp_class)}</upnp:class>'
+        f'<res protocolInfo="http-get:*:{esc(mime_type)}:*"{duration_attr}>{esc(url)}</res>'
+        '</item>'
+        '</DIDL-Lite>'
+    )
 
 
 def _base_plex_headers(device) -> dict:

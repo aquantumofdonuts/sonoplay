@@ -6,7 +6,7 @@ import math
 
 logger = logging.getLogger(__name__)
 
-from utils import g
+from utils import g, build_didl_lite_metadata, mime_type_for_container, DEFAULT_AUDIO_MIME_TYPE
 from settings import settings
 
 UNLIMITED = math.inf
@@ -238,7 +238,37 @@ class PlayQueue(object):
             return self.build_transcode_url(track)
         
         return self._build_stream_url(track.Media[0].Part[0].key)
-    
+
+    def metadata_for_track(self, track, url, force_transcode=False):
+        """
+        Build DIDL-Lite CurrentURIMetaData for a track.
+
+        Renderers like Samsung soundbars/TVs reject SetAVTransportURI when
+        metadata is empty, so this describes the track (title/artist/album)
+        and, importantly, the res protocolInfo the actual stream will be
+        served as - a transcoded track is always audio/mpeg regardless of
+        the source container.
+        """
+        if force_transcode:
+            mime_type = DEFAULT_AUDIO_MIME_TYPE
+        else:
+            part = None
+            media = track.Media[0] if hasattr(track, 'Media') and track.Media else None
+            if media is not None and hasattr(media, 'Part') and media.Part:
+                part = media.Part[0]
+            container = getattr(part, 'container', None) or getattr(media, 'container', None)
+            mime_type = mime_type_for_container(container)
+
+        return build_didl_lite_metadata(
+            item_id=getattr(track, 'ratingKey', None),
+            title=getattr(track, 'title', None) or 'Unknown Title',
+            url=url,
+            mime_type=mime_type,
+            artist=getattr(track, 'grandparentTitle', None),
+            album=getattr(track, 'parentTitle', None),
+            duration_ms=getattr(track, 'duration', None),
+        )
+
     def is_track_playable(self, track):
         """
         Check if a track is playable based on bitrate/sample rate thresholds.

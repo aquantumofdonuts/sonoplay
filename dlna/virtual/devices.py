@@ -362,8 +362,17 @@ class VirtualDlnaDevice:
     # ------------------------------------------------------------------
     # DLNA-like control surface
     # ------------------------------------------------------------------
-    async def SetAVTransportURI(self, uri: str, client=None):
+    async def SetAVTransportURI(self, data, client=None):
         from plex.adapters import adapter_by_device  # local import to avoid cycle
+
+        # Accept either a dict (CurrentURI + CurrentURIMetaData, the form used by
+        # PlexDlnaAdapter) or a bare URI string, for backward compatibility.
+        if isinstance(data, dict):
+            uri = data.get("CurrentURI")
+            metadata = data.get("CurrentURIMetaData", "")
+        else:
+            uri = data
+            metadata = ""
 
         # Before starting virtual device playback, force any solo-playing members to
         # stop cleanly so the upcoming group start owns transport state entirely.
@@ -400,7 +409,11 @@ class VirtualDlnaDevice:
         try:
             self._is_actively_playing = True  # Virtual device is being commanded to play
             self._active_target_uri = uri
-            return await self._fan_out("SetAVTransportURI", uri, client=client)
+            return await self._fan_out(
+                "SetAVTransportURI",
+                {"CurrentURI": uri, "CurrentURIMetaData": metadata},
+                client=client,
+            )
         except Exception:
             self._is_actively_playing = False
             self._active_target_uri = None
