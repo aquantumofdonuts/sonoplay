@@ -1,0 +1,43 @@
+# Release Notes: v1.2.3
+
+Release date: 2026-07-20
+
+## Overview
+
+SonoPlay v1.2.3 fixes a casting failure on strict UPnP renderers - reported against a Samsung soundbar in [#10](https://github.com/aquantumofdonuts/sonoplay/issues/10) - where `SetAVTransportURI` was rejected outright with a `UPnPError` SOAP Fault. The device would still show up as a valid Plexamp cast target, but playback never started.
+
+## What Changed
+
+### Fixed: empty `CurrentURIMetaData` rejected by strict renderers
+
+Sonoplay always sent an empty string for `CurrentURIMetaData` on `SetAVTransportURI`. Sonos and most DLNA renderers tolerate that; Samsung's DLNA/AllShare stack does not - it has no way to classify the resource without DIDL-Lite metadata describing it, so it rejects the call.
+
+Sonoplay now builds a minimal DIDL-Lite document for every track: title, artist, album, and a `res` element whose `protocolInfo` matches the actual stream's MIME type (always `audio/mpeg` for Plex-transcoded tracks, mapped from the source container otherwise). This applies to both direct casting and virtual/grouped multi-device playback.
+
+### Fixed: real UPnP error codes were silently discarded
+
+Independently of the above, SOAP Fault parsing (`xml2dict`) never stripped the `urn:schemas-upnp-org:control-1-0` XML namespace used by a UPnP `<UPnPError>` element. This meant `errorCode` and `errorDescription` parsed under a namespace-prefixed key that no caller ever looked up, so every SOAP Fault - from any renderer, not just Samsung - logged only a generic `"SOAP Fault: UPnPError"` line with no way to tell what actually went wrong. That namespace is now included, so future SOAP Fault logs show the real error code and description.
+
+## Root Cause
+
+Two independent bugs compounded to make this both a real playback failure and hard to diagnose:
+
+1. `dlna/dlna_device.py`'s `DEFAULT_ACTION_DATA` hardcoded `CurrentURIMetaData` to `""` for every `SetAVTransportURI` call, with nothing overriding it per-track.
+2. `utils.xml2dict()`'s namespace-stripping map was missing the UPnP control namespace, so the one piece of information that would have explained *why* a renderer rejected the call - the UPnP error code/description - never reached the logs.
+
+## Versioning
+
+- Project/package version: 1.2.3
+- Runtime banner version: v1.2.3
+
+## Upgrade Notes
+
+No migration steps required, no new configuration. Restart the container to pick up the fix.
+
+```bash
+docker compose up -d --build
+```
+
+## Commit Since v1.2.2
+
+- #11 fix(dlna): populate CurrentURIMetaData and surface real UPnPError details

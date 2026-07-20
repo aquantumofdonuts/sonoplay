@@ -7,6 +7,15 @@ The latest version is always available by pulling the `latest` tag.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.3] - 2026-07-20
+
+### Fixed
+
+- Samsung (and other strict UPnP renderer) soundbars/TVs rejecting `SetAVTransportURI` with a `UPnPError` SOAP Fault, causing casting to fail entirely while the device still appeared as a valid Plexamp target ([#10](https://github.com/aquantumofdonuts/sonoplay/issues/10)). Sonoplay now sends real DIDL-Lite `CurrentURIMetaData` (title/artist/album plus a `res` element with the correct MIME type) instead of an empty string, which is what strict renderers need to accept the resource.
+- SOAP Fault parsing silently discarded the actual UPnP `errorCode`/`errorDescription` behind every `SetAVTransportURI`/`Stop`/etc. rejection (regardless of device brand), logging only a generic `"SOAP Fault: UPnPError"` string. A missing XML namespace mapping is now included, so logs surface the real error code and description for future diagnosis.
+
+---
+
 ## [v1.2.2] - 2026-07-19
 
 ### Fixed
@@ -78,6 +87,8 @@ Based on commit `578399ead0fe606f562a897640a3c522226bdc22`.
 
 ---
 
+[v1.2.3]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.2...v1.2.3
+[v1.2.2]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.1.0...v1.2.1
 [v1.1.0]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/songchenwen/plexdlnaplayer/tree/578399ead0fe606f562a897640a3c522226bdc22
