@@ -324,9 +324,9 @@ async def link_page(request: Request):
     # only delayed first paint.
     await guess_host_ip(request)
     return templates.TemplateResponse(
+        request,
         "discovered_devices.html",
         {
-            'request': request,
             'onboarding_enabled': settings.enable_onboarding_wizard,
             'active_page': 'devices'
         }
@@ -361,9 +361,9 @@ def _virtual_device_error_to_http(exc: Exception) -> None:
 async def virtual_devices_page(request: Request):
     await guess_host_ip(request)
     return templates.TemplateResponse(
+        request,
         "virtual_devices.html",
         {
-            "request": request,
             "onboarding_enabled": settings.enable_onboarding_wizard,
             "active_page": "groups"
         }
