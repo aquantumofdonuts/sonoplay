@@ -125,6 +125,8 @@ CONTAINER_MIME_TYPES = {
     "ape": "audio/x-ape",
     "aiff": "audio/aiff",
     "aif": "audio/aiff",
+    "dsf": "audio/dsd",
+    "dff": "audio/dsd",
 }
 
 DEFAULT_AUDIO_MIME_TYPE = "audio/mpeg"

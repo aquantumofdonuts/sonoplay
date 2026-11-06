@@ -26,6 +26,11 @@ def test_mime_type_for_known_container():
     assert mime_type_for_container("MP3") == "audio/mpeg"
 
 
+def test_mime_type_for_dsd_containers():
+    assert mime_type_for_container("dsf") == "audio/dsd"
+    assert mime_type_for_container("dff") == "audio/dsd"
+
+
 def test_mime_type_for_unknown_or_missing_container_defaults_to_mpeg():
     assert mime_type_for_container("some-weird-format") == "audio/mpeg"
     assert mime_type_for_container(None) == "audio/mpeg"
