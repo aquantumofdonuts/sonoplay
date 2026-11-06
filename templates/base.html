@@ -359,8 +359,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        bitrate_kbps: bitrate || null,
-                        sample_rate_hz: sampleRate || null
+                        bitrate_kbps: bitrate,
+                        sample_rate_hz: sampleRate
                     })
                 });
                 
