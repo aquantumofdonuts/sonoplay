@@ -55,6 +55,10 @@ ERROR_COUNT_TO_REMOVE = 20
 MAX_RETRIES = 3
 
 
+class NotARendererError(Exception):
+    """The UPnP device at this location isn't a usable DLNA media renderer."""
+
+
 class ServerErrorException(Exception):
     """Raised for HTTP 5xx errors that should be retried."""
     def __init__(self, status: int, body: str):
@@ -367,13 +371,17 @@ class DlnaDeviceService(object):
                         + self.device.uuid + '>',
             'Timeout': f'Second-{timeout_sec}'
         }
-        logger.info("sub dlna device %s %s", self.device.name, self.service_type)
+        # Log the first subscription; renewals happen every timeout_sec / 2.
+        renewal = self._subscription_expiry is not None
+        logger.log(logging.DEBUG if renewal else logging.INFO,
+                   "sub dlna device %s %s", self.device.name, self.service_type)
         async with g.http.request("SUBSCRIBE", self.event_url, headers=headers) as response:
             if response.ok:
                 self.next_subscribe_call_time = datetime.now(timezone.utc) + timedelta(seconds=(timeout_sec // 2))
                 self._subscription_expiry = datetime.now(timezone.utc) + timedelta(seconds=timeout_sec)
                 logger.debug("%s subscribed, expires in %ds", self.device.name, timeout_sec)
                 return True
+            logger.warning("dlna %s subscribe failed: HTTP %s", self.device.name, response.status)
         return False
 
     def needs_resubscription(self) -> bool:
@@ -495,10 +503,10 @@ class DlnaDevice(object):
                 if renderer_name and renderer_name.lower() != (self.name or '').lower():
                     self.name = renderer_name
             if not self.name or not self.uuid:
-                raise Exception(f"not valid dlna device {self.location_url}")
-            if UPNP_AVT_SERVICE_TYPE not in self.services or UPNP_RC_SERVICE_TYPE not in self.services:
-                logger.warning("dlna device %s missing required services: %s", self.name, list(self.services.keys()))
-                raise Exception(f"not valid dlna device {self.name}")
+                raise NotARendererError("no friendlyName or UDN in device description")
+            missing = [s for s in (UPNP_AVT_SERVICE_TYPE, UPNP_RC_SERVICE_TYPE) if s not in self.services]
+            if missing:
+                raise NotARendererError(f"{self.name} is not a media renderer (missing {', '.join(missing)})")
             url = urlparse(self.location_url)
             self.ip = url.hostname
             self.name = settings.dlna_name_alias(self.uuid, self.name, self.ip)

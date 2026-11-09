@@ -48,7 +48,7 @@ from plex.subscribe import sub_man
 from utils import plex_server_response_headers, xml2dict, timeline_poll_headers, g, require_valid_uuid
 from settings import settings
 import asyncio
-from dlna.dlna_device import DlnaDevice
+from dlna.dlna_device import DlnaDevice, NotARendererError
 from plex.adapters import adapter_by_device
 from plex.gdm import PlexGDM
 from fastapi.templating import Jinja2Templates
@@ -120,8 +120,14 @@ async def handle_device_unreachable(request: Request, exc: ClientConnectionError
     )
 
 
+# Last discovery error per location URL. SSDP announcements repeat every
+# minute or so, and logging the same rejection each time buries the events
+# that matter. A new or different error is still logged.
+_discovery_errors: Dict[str, str] = {}
+
+
 async def on_new_dlna_device(location_url):
-    logger.info("got new dlna device location url %s", location_url)
+    logger.debug("got new dlna device location url %s", location_url)
     for d in devices:
         if d.location_url == location_url:
             return
@@ -129,8 +135,15 @@ async def on_new_dlna_device(location_url):
     try:
         await device.get_data()
     except Exception as exc:
-        logger.warning("failed to init dlna device from %s: %s", location_url, exc)
+        message = str(exc) or exc.__class__.__name__
+        if _discovery_errors.get(location_url) != message:
+            _discovery_errors[location_url] = message
+            if isinstance(exc, NotARendererError):
+                logger.info("ignoring UPnP device at %s: %s", location_url, message)
+            else:
+                logger.warning("failed to init dlna device from %s: %s", location_url, message)
         return
+    _discovery_errors.pop(location_url, None)
     logger.info("got new dlna device from %s", device.name)
     asyncio.create_task(device.loop_subscribe(), name=f"dlna sub {device.name}")
     devices.append(device)
@@ -217,8 +230,27 @@ def _apply_stored_audio_settings():
                 stored.get("bitrate_kbps"), stored.get("sample_rate_hz"))
 
 
+class _QuietAccessFilter(logging.Filter):
+    """Drop access log lines for frequent requests that carry no event.
+
+    Health checks, Plexamp's resource polling and DLNA event callbacks arrive
+    every few seconds. Playback commands and failed requests are kept.
+    """
+    _QUIET_PREFIXES = ("/health", "/resources", "/dlna/callback/")
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple) and len(args) == 5:
+            path, status = args[2], args[4]
+            if isinstance(status, int) and status < 400 and str(path).startswith(self._QUIET_PREFIXES):
+                return False
+        return True
+
+
 @s.on_event("startup")
 async def on_startup():
+    # uvicorn configures its loggers before startup, so add the filter here.
+    logging.getLogger("uvicorn.access").addFilter(_QuietAccessFilter())
     _apply_stored_audio_settings()
     # Create HTTP session with default timeout
     timeout = aiohttp.ClientTimeout(
