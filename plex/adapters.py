@@ -834,7 +834,15 @@ class PlexDlnaAdapter(object):
                     if __debug__:
                         logger.debug("%s received uri %s while targeting %s", self.dlna.name, changed_state.current_uri, self._active_target_uri)
             if 'state' in changed_state:
-                if changed_state.state in ("PLAYING", "PAUSED_PLAYBACK"):
+                reported_uri = changed_state.get('current_uri')
+                if changed_state.state in ("PLAYING", "PAUSED_PLAYBACK") and reported_uri \
+                        and reported_uri != self._active_target_uri:
+                    # The device is still reporting the previous track. Counting
+                    # this as the new track playing would end the operation
+                    # before the device has started it.
+                    logger.debug("%s ignoring %s for previous uri during transport operation %d",
+                                 self.dlna.name, changed_state.state, self._active_operation_id)
+                elif changed_state.state in ("PLAYING", "PAUSED_PLAYBACK"):
                     self._active_operation_state_ready = True
                     if self._active_operation_uri_confirmed and not self._active_operation_state_confirmed:
                         self._active_operation_state_confirmed = True
