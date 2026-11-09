@@ -728,7 +728,10 @@ async def dlna_subscribe(request: Request, uuid: str):
     adapter = await adapter_by_device(await get_device_by_uuid(uuid))
     b = await request.body()
     info = xml2dict(b)
-    if adapter is not None:
+    # Some renderers send events without a LastChange variable (the OPPO
+    # does after each SUBSCRIBE). There's nothing to update then.
+    prop = info.propertyset.property if info.propertyset else None
+    if adapter is not None and isinstance(prop, dict) and prop.get("LastChange"):
         adapter.update_state(info)
     return ""
 

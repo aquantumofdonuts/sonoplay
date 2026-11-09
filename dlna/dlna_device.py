@@ -190,6 +190,10 @@ class DlnaDeviceService(object):
         # Subscription expiry tracking for auto-renewal
         self._subscription_expiry: datetime | None = None
         self._resubscribe_margin_seconds = 30
+        # Last UPnP error per action and whether SUBSCRIBE is failing, so
+        # errors that repeat on every poll or renewal are logged once.
+        self._last_errors = {}
+        self._subscribe_failing = False
 
     def payload_from_template(self, action: str, data: dict):
         fields = ''
@@ -226,13 +230,18 @@ class DlnaDeviceService(object):
                 faultstring = fault.get('faultstring')
                 
                 if error_desc or error_code:
-                    logger.warning("dlna %s %s UPnP error %s: %s",
-                                  self.device.name, action, error_code, error_desc)
+                    message = f"UPnP error {error_code}: {error_desc}"
                 elif faultstring:
-                    logger.warning("dlna %s %s SOAP Fault: %s",
-                                  self.device.name, action, faultstring)
+                    message = f"SOAP Fault: {faultstring}"
                 else:
-                    logger.warning("dlna %s %s SOAP Fault (no details)", self.device.name, action)
+                    message = "SOAP Fault (no details)"
+                # Polled actions (GetVolume on a TV that refuses it, say)
+                # fail the same way every time: log until the error changes
+                # or the action succeeds again.
+                repeated = self._last_errors.get(action) == message
+                self._last_errors[action] = message
+                logger.log(logging.DEBUG if repeated else logging.WARNING,
+                           "dlna %s %s %s", self.device.name, action, message)
                 
                 return 'handled'  # Valid SOAP Fault - don't retry
         except Exception as e:
@@ -312,6 +321,7 @@ class DlnaDeviceService(object):
                     if error is not None:
                         logger.warning("dlna device control request error: %s", info.toDict())
                         return None
+                    self._last_errors.pop(action, None)
                     return info.Envelope.Body.get(f"{action}Response")
             except (ClientConnectionError, asyncio.TimeoutError) as e:
                 last_exception = e
@@ -372,16 +382,19 @@ class DlnaDeviceService(object):
             'Timeout': f'Second-{timeout_sec}'
         }
         # Log the first subscription; renewals happen every timeout_sec / 2.
-        renewal = self._subscription_expiry is not None
-        logger.log(logging.DEBUG if renewal else logging.INFO,
+        quiet = self._subscription_expiry is not None or self._subscribe_failing
+        logger.log(logging.DEBUG if quiet else logging.INFO,
                    "sub dlna device %s %s", self.device.name, self.service_type)
         async with g.http.request("SUBSCRIBE", self.event_url, headers=headers) as response:
             if response.ok:
                 self.next_subscribe_call_time = datetime.now(timezone.utc) + timedelta(seconds=(timeout_sec // 2))
                 self._subscription_expiry = datetime.now(timezone.utc) + timedelta(seconds=timeout_sec)
+                self._subscribe_failing = False
                 logger.debug("%s subscribed, expires in %ds", self.device.name, timeout_sec)
                 return True
-            logger.warning("dlna %s subscribe failed: HTTP %s", self.device.name, response.status)
+            logger.log(logging.DEBUG if self._subscribe_failing else logging.WARNING,
+                       "dlna %s subscribe failed: HTTP %s", self.device.name, response.status)
+            self._subscribe_failing = True
         return False
 
     def needs_resubscription(self) -> bool:
