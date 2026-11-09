@@ -640,19 +640,27 @@ class DlnaDevice(object):
 
     async def remove_self(self):
         async with devices_lock:
-            if self in devices:
-                devices.remove(self)
-        from plex.adapters import adapter_by_device, remove_adapter
+            if self not in devices:
+                # Already removed. Every failed request past the error
+                # threshold schedules another removal, so this runs many
+                # times for a device that went offline.
+                return
+            devices.remove(self)
+        from plex.adapters import adapters, remove_adapter
         from plex.subscribe import sub_man
         self.stop_subscribe()
-        adapter = await adapter_by_device(self)
-        adapter.state.state = "STOPPED"
-        adapter.state._wakeup_loop()
-        adapter.state._thread_should_stop = True
+        # Don't use adapter_by_device() here: it would create a fresh
+        # adapter (and a new polling loop) for a device we're removing.
+        adapter = adapters.get(self.uuid)
+        if adapter is not None:
+            adapter.state.state = "STOPPED"
+            adapter.state._wakeup_loop()
+            adapter.state._thread_should_stop = True
         await sub_man.notify_device_disconnected(self)
         await sub_man.notify_server_device(self, force=True)
-        adapter.queue = None
-        await remove_adapter(adapter)
+        if adapter is not None:
+            adapter.queue = None
+            await remove_adapter(adapter)
         settings.mark_device_status(self.uuid, "offline")
 
     def __str__(self):
