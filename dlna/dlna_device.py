@@ -235,9 +235,8 @@ class DlnaDeviceService(object):
 
     async def control(self, action: str, data: dict, client: aiohttp.ClientSession = None):
         headers = {
-            'Content-type': 'text/xml',
+            'Content-Type': 'text/xml; charset="utf-8"',
             'SOAPACTION': '"{}#{}"'.format(self.urn, action),
-            'charset': 'utf-8',
             'User-Agent': 'SonoPlay/1.0'
         }
         if client is None:
