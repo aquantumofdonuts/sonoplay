@@ -86,9 +86,22 @@ def unescape_xml(xml):
     return unescape(xml.decode())
 
 
+# '&' that doesn't start an XML entity or character reference.
+_BARE_AMPERSAND_RE = re.compile(r'&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)')
+
+
+def escape_bare_ampersands(xml: str) -> str:
+    """Escape '&' characters that aren't part of an entity, so the XML parses.
+
+    Some renderers (e.g. Yamaha AVRs) send URLs with raw '&' in their query
+    strings, and unescape_xml() turns every '&amp;' into a bare '&'.
+    """
+    return _BARE_AMPERSAND_RE.sub('&amp;', xml)
+
+
 def xml2dict(xml):
     if not isinstance(xml, str):
-        xml = unescape_xml(xml)
+        xml = escape_bare_ampersands(unescape_xml(xml))
     parsed = xmltodict.parse(xml,
                              process_namespaces=True,
                              namespaces={

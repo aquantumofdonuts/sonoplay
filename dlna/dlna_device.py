@@ -33,7 +33,7 @@ import aiohttp
 from aiohttp import ClientConnectorError, ClientConnectionError
 
 from plex.adapters import remove_adapter
-from utils import xml2dict, UPNP_RC_SERVICE_TYPE, UPNP_AVT_SERVICE_TYPE, g, extract_value
+from utils import xml2dict, escape_bare_ampersands, UPNP_RC_SERVICE_TYPE, UPNP_AVT_SERVICE_TYPE, g, extract_value
 from dlna.discover import guess_local_ip
 from settings import settings
 
@@ -83,6 +83,7 @@ def sanitize_soap_response(xml: str) -> str:
     4. Various: Missing dlna: namespace declaration (jupnp)
     5. Belkin WeMo: Non-standard urn:Belkin namespace (jupnp)
     6. Various: Garbage characters after closing tag (jupnp)
+    7. Yamaha: Unescaped '&' in URLs (TrackURI in GetPositionInfo)
     
     Future quirks should be added here as discovered.
     """
@@ -125,6 +126,10 @@ def sanitize_soap_response(xml: str) -> str:
                 xml = xml[:end_idx]
             break
     
+    # 7. Escape bare '&' left unescaped by the device (Yamaha TrackURI).
+    #    Runs after step 3 so the Oppo '<&' prefix is already fixed.
+    xml = escape_bare_ampersands(xml)
+
     return xml
 
 
