@@ -7,6 +7,23 @@ The latest version is always available by pulling the `latest` tag.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.4] - 2026-11-18
+
+### Fixed
+
+- SOAP control requests hanging and timing out on KEF LSX, Yamaha and other renderers that require a charset in `Content-Type` ([#13](https://github.com/aquantumofdonuts/sonoplay/issues/13), [#21](https://github.com/aquantumofdonuts/sonoplay/pull/21)). SonoPlay now sends `Content-Type: text/xml; charset="utf-8"` as the UPnP spec requires, instead of a non-standard `charset` header. Thanks @chowchinho and @chaun14.
+- Yamaha AVR responses and event notifications with unescaped `&` failing to parse, which made SonoPlay skip through the whole queue at high request rates ([#15](https://github.com/aquantumofdonuts/sonoplay/issues/15), [#16](https://github.com/aquantumofdonuts/sonoplay/pull/16)). Bare ampersands are now escaped before parsing. Thanks @kcgthb.
+- DSD files (`.dsf`, `.dff`) announced as `audio/mpeg` instead of `audio/dsd`, so strict renderers refused them ([#19](https://github.com/aquantumofdonuts/sonoplay/issues/19), [#20](https://github.com/aquantumofdonuts/sonoplay/pull/20)). Thanks @kcgthb.
+- "Disabled" bitrate/sample-rate transcoding thresholds never being saved from the audio settings dialog ([#17](https://github.com/aquantumofdonuts/sonoplay/issues/17), [#18](https://github.com/aquantumofdonuts/sonoplay/pull/18)). Thanks @kcgthb.
+
+### Documentation
+
+- Documented `PMS_ADDRESS` for firewalls that block `*.plex.direct` DNS and for older renderers that reject HTTPS stream URLs.
+- Removed the stale `git clone --branch stable` instruction from the README and website.
+- `docker-compose.yaml` now references the published GHCR image, so `docker compose pull` upgrades in place.
+
+---
+
 ## [v1.2.3] - 2026-07-20
 
 ### Fixed
@@ -87,6 +104,7 @@ Based on commit `578399ead0fe606f562a897640a3c522226bdc22`.
 
 ---
 
+[v1.2.4]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.3...v1.2.4
 [v1.2.3]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.2...v1.2.3
 [v1.2.2]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.1...v1.2.2
 [v1.2.1]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.1.0...v1.2.1

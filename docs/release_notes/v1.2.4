@@ -1,0 +1,69 @@
+# Release Notes: v1.2.4
+
+Release date: 2026-11-18
+
+## Overview
+
+SonoPlay v1.2.4 is a renderer-compatibility release built almost entirely from community contributions. It fixes SOAP requests that hung on KEF and Yamaha renderers, XML parse failures and runaway track skipping on Yamaha AVRs, DSD files being announced with the wrong MIME type, and the audio settings dialog silently ignoring "Disabled".
+
+Thank you to **@chaun14**, **@kcgthb** (Kilian Cavalotti) and **@chowchinho** for the reports, investigations and fixes in this release.
+
+## What Changed
+
+### Fixed: SOAP requests hang on KEF and Yamaha renderers ([#13](https://github.com/aquantumofdonuts/sonoplay/issues/13), [#21](https://github.com/aquantumofdonuts/sonoplay/pull/21))
+
+SonoPlay sent `Content-type: text/xml` plus a separate, non-standard `charset: utf-8` HTTP header on every UPnP control request. Some renderers, including the KEF LSX and Yamaha RX-V677, answer that with `400 Bad Request` and never finish the response body, so every action (`GetPositionInfo`, `SetAVTransportURI`, ...) timed out after three attempts and playback failed.
+
+Control requests now send `Content-Type: text/xml; charset="utf-8"`, the form the UPnP Device Architecture specifies. Root cause found by @chowchinho, confirmed on Yamaha and fixed by @chaun14.
+
+### Fixed: raw `&` in device XML breaks parsing on Yamaha AVRs ([#15](https://github.com/aquantumofdonuts/sonoplay/issues/15), [#16](https://github.com/aquantumofdonuts/sonoplay/pull/16))
+
+Yamaha AVRs return `TrackURI` in `GetPositionInfo` with unescaped `&` in the query string. Every position poll failed to parse, so SonoPlay concluded the device had rejected the track and skipped through the whole queue at dozens of requests per second. On the AVR that was enough to knock its DLNA service offline for minutes. GENA event notifications failed the same way, because `unescape_xml()` turns `&amp;` inside `LastChange` into a bare `&`.
+
+A new `escape_bare_ampersands()` helper escapes any `&` that doesn't start an entity or character reference. It runs as the last step of `sanitize_soap_response()` and right after `unescape_xml()` in `xml2dict()`. It only changes text the parser would have rejected anyway. Contributed by @kcgthb.
+
+### Fixed: DSD files announced as `audio/mpeg` ([#19](https://github.com/aquantumofdonuts/sonoplay/issues/19), [#20](https://github.com/aquantumofdonuts/sonoplay/pull/20))
+
+`.dsf` and `.dff` weren't in the container-to-MIME map, so untranscoded DSD tracks were described as `audio/mpeg` in DIDL-Lite `protocolInfo`. Strict renderers, such as a Yamaha AVR, accepted the track and then stopped immediately. They are now announced as `audio/dsd`. Transcoded tracks are unaffected and still use `audio/mpeg`. Contributed by @kcgthb.
+
+### Fixed: "Disabled" transcoding thresholds were never saved ([#17](https://github.com/aquantumofdonuts/sonoplay/issues/17), [#18](https://github.com/aquantumofdonuts/sonoplay/pull/18))
+
+The audio settings dialog sent `0 || null` for the "Disabled" stop. The server ignores `null`, so nothing was stored, the sliders reverted to the defaults (1500 kbps / 48 kHz) and transcoding carried on. The dialog now sends `0`, which the server already stores as "no limit". Contributed by @kcgthb.
+
+### Docs
+
+- `PMS_ADDRESS` is now documented in the README and `.env.example`: when to set it (firewalls that block `*.plex.direct` DNS, no hairpin NAT) and that it also helps older renderers like the KEF LSX that reject `https://…plex.direct` stream URLs.
+- The README and website no longer tell users to `git clone --branch stable`. That tag was retired in favour of `latest`, and the command failed.
+- `docker-compose.yaml` now references the published GHCR image, so `docker compose pull && docker compose up -d` upgrades in place.
+- The Configuration section is now a table, and there's a note that Portainer/`docker run` don't load `.env` automatically.
+
+## Versioning
+
+- Project/package version: 1.2.4
+- Runtime banner version: v1.2.4
+
+## Upgrade Notes
+
+No migration steps and no new required configuration.
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Or, if you build from a local checkout:
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+If you previously saw `GetPositionInfo connection failed after 3 attempts` on a KEF, Yamaha, or similar renderer, this release should resolve it. Reports from Oppo/LG/Heos users affected by [#3](https://github.com/aquantumofdonuts/sonoplay/issues/3) are welcome.
+
+## Commits Since v1.2.3
+
+- #21 fix(dlna): send charset in SOAP Content-Type header
+- #16 fix(dlna): escape bare ampersands before parsing device XML
+- #20 fix(dlna): announce DSD files as audio/dsd instead of audio/mpeg
+- #18 fix(ui): send 0 when transcoding thresholds are set to Disabled
+- docs: document PMS_ADDRESS and fix stale install instructions
