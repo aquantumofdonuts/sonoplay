@@ -1,6 +1,7 @@
 services:
   sonoplay:
     build: .
+    image: ghcr.io/aquantumofdonuts/sonoplay:latest
     container_name: sonoplay
     network_mode: host
     restart: unless-stopped

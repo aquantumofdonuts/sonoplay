@@ -41,10 +41,19 @@ docker run -d \
 ### Docker Compose
 
 ```bash
-git clone --branch stable https://github.com/aquantumofdonuts/sonoplay.git
+git clone https://github.com/aquantumofdonuts/sonoplay.git
 cd sonoplay
 docker compose up -d
 ```
+
+Compose pulls the published `ghcr.io/aquantumofdonuts/sonoplay:latest` image. To update to a new release:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To build from your local checkout instead, run `docker compose up -d --build`.
 
 ### First Use
 
@@ -62,11 +71,32 @@ cp .env.example .env
 
 Common settings:
 
-- HTTP_PORT: Web UI/API port (default 32488)
-- HOST_IP: Explicit host IP (auto-detected when unset)
-- CLIENT_PROFILE: Plex transcoding profile
+| Variable | Default | Description |
+|---|---|---|
+| `HTTP_PORT` | `32488` | Web UI / API port |
+| `HOST_IP` | auto-detected | Explicit host IP for DLNA advertisement |
+| `CLIENT_PROFILE` | unset | Plex client profile name sent to PMS (e.g. `Sonos`, `DLNA`) |
+| `PMS_ADDRESS` | unset | PMS LAN IP — see below |
 
 Note: docker-compose.yaml uses env_file.required and needs Docker Compose v2.17+.
+
+### Portainer / bare Docker users
+
+When running via Portainer or `docker run` (not `docker compose`), the `.env` file is **not** automatically loaded. Set environment variables explicitly in your Portainer stack/container config or via `-e` flags on the command line.
+
+### `PMS_ADDRESS`: firewall, no hairpin NAT, or renderers that reject HTTPS
+
+If casting worked before a firewall change and now fails, your new firewall may be blocking DNS resolution for Plex's `*.plex.direct` hostnames. These subdomains are how Plex establishes local HTTPS connections to PMS; without hairpin NAT the old workaround is gone.
+
+Set `PMS_ADDRESS` to your PMS's LAN IP to bypass DNS entirely:
+
+```env
+PMS_ADDRESS=192.168.1.x
+```
+
+When set, SonoPlay contacts PMS directly over plain HTTP at that IP for all operations (play queue fetches, stream URLs, timeline reporting). Leave unset if DNS is working normally.
+
+The same setting helps with older renderers that can't play HTTPS streams. Some devices, such as the KEF LSX, reject `https://…plex.direct` stream URLs outright: `SetAVTransportURI` fails and the track never starts. Setting `PMS_ADDRESS` sends those renderers a plain `http://` URL they can play.
 
 ## Requirements
 
@@ -77,7 +107,7 @@ Note: docker-compose.yaml uses env_file.required and needs Docker Compose v2.17+
 
 ## Supported Devices
 
-Any standards-compliant DLNA/UPnP renderer, including common Sonos, Yamaha, Denon/Marantz, and smart TV implementations.
+Any standards-compliant DLNA/UPnP renderer, including common Sonos, Yamaha, KEF, Denon/Marantz, Oppo, and smart TV implementations.
 
 ## Project Docs
 
