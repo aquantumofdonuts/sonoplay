@@ -617,19 +617,33 @@ class DlnaDevice(object):
         # when it sees subscribed flipped back to True.
         token = object()
         service.subscribe_loop_token = token
+        # An unreachable device fails every retry the same way; log the
+        # first failure and then only changes, until a subscribe succeeds.
+        last_error = None
+
+        def log_error(kind, exc):
+            nonlocal last_error
+            message = f"{kind}: {str(exc) or exc.__class__.__name__}"
+            logger.log(logging.DEBUG if message == last_error else logging.WARNING,
+                       "dlna %s subscribe loop %s", self.name, message)
+            last_error = message
+
         while service.subscribed and service.subscribe_loop_token is token:
             try:
                 await self.subscribe(service_type=service_type, timeout_sec=timeout_sec)
+                if last_error is not None:
+                    logger.info("dlna %s subscribe loop recovered", self.name)
+                    last_error = None
                 await asyncio.sleep(timeout_sec // 2)
             except ClientConnectorError as exc:
-                logger.warning("dlna %s subscribe loop connection error: %s", self.name, exc)
+                log_error("connection error", exc)
                 if not service.subscribed:
                     break
                 await asyncio.sleep(min(timeout_sec, 15))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("dlna %s subscribe loop error: %s", self.name, exc)
+                log_error("error", exc)
                 if not service.subscribed:
                     break
                 await asyncio.sleep(min(timeout_sec, 10))
