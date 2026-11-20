@@ -88,6 +88,7 @@ datastore = None
 
 class Settings(BaseSettings):
     http_port: int = 32488
+    log_level: str = "INFO"  # DEBUG, INFO, WARNING or ERROR
     host_ip: str | None = None
     product: str = "SonoPlay"
     aliases: str = ""

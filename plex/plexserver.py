@@ -219,6 +219,12 @@ def _apply_stored_audio_settings():
 
 @s.on_event("startup")
 async def on_startup():
+    # configure_logging() runs before settings are loaded; apply LOG_LEVEL now.
+    level = getattr(logging, str(settings.log_level).upper(), None)
+    if isinstance(level, int):
+        logging.getLogger().setLevel(level)
+    else:
+        logger.warning("unknown LOG_LEVEL %r, keeping INFO", settings.log_level)
     _apply_stored_audio_settings()
     # Create HTTP session with default timeout
     timeout = aiohttp.ClientTimeout(
