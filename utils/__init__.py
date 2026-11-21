@@ -142,6 +142,7 @@ CONTAINER_MIME_TYPES = {
 }
 
 DEFAULT_AUDIO_MIME_TYPE = "audio/mpeg"
+DEFAULT_DLNA_PROTOCOL_INFO = "DLNA.ORG_OP=01"
 
 
 def mime_type_for_container(container: str | None) -> str:
@@ -207,7 +208,8 @@ def build_didl_lite_metadata(*, item_id, title, url, mime_type=DEFAULT_AUDIO_MIM
         f'<dc:title>{esc(title)}</dc:title>'
         f'{creator_tag}{artist_tag}{album_tag}'
         f'<upnp:class>{esc(upnp_class)}</upnp:class>'
-        f'<res protocolInfo="http-get:*:{esc(mime_type)}:*"{duration_attr}>{esc(url)}</res>'
+        f'<res protocolInfo="http-get:*:{esc(mime_type)}:{DEFAULT_DLNA_PROTOCOL_INFO}"'
+        f'{duration_attr}>{esc(url)}</res>'
         '</item>'
         '</DIDL-Lite>'
     )

@@ -44,7 +44,7 @@ def test_metadata_for_direct_play_track_uses_container_mime_type():
     queue = _make_queue()
     track = _track()
     metadata = queue.metadata_for_track(track, "http://host/stream.flac", force_transcode=False)
-    assert 'protocolInfo="http-get:*:audio/flac:*"' in metadata
+    assert 'protocolInfo="http-get:*:audio/flac:DLNA.ORG_OP=01"' in metadata
     assert "<dc:title>My Song</dc:title>" in metadata
     assert "<upnp:artist>My Artist</upnp:artist>" in metadata
     assert "<upnp:album>My Album</upnp:album>" in metadata
@@ -58,7 +58,7 @@ def test_metadata_for_transcoded_track_always_uses_mpeg():
     queue = _make_queue()
     track = _track()  # source is flac
     metadata = queue.metadata_for_track(track, "http://host/transcode.mp3", force_transcode=True)
-    assert 'protocolInfo="http-get:*:audio/mpeg:*"' in metadata
+    assert 'protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_OP=01"' in metadata
 
 
 def test_metadata_for_track_missing_title_has_fallback():
