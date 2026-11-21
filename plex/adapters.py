@@ -1178,9 +1178,51 @@ class PlexDlnaAdapter(object):
         volume = int(volume.CurrentVolume)
         return convert_volume(volume, self.dlna.volume_max, self.dlna.volume_min, 100, 0, 1)
 
+    # How long the requested volume is reported after SetVolume returns, if
+    # the device hasn't reported it by then.
+    _REQUESTED_VOLUME_GRACE = 5.0
+
+    def _reported_volume(self):
+        """Volume to report to Plex: the requested one while it's being applied.
+
+        Some renderers take seconds to answer SetVolume (a Yamaha AVR ramps
+        the volume first). Reporting the device's volume meanwhile makes the
+        controller's slider jump back, then forward once the change lands.
+        """
+        requested = getattr(self, "_requested_volume", None)
+        if requested is None:
+            return self.state.volume
+        lock = getattr(self, "_volume_lock", None)
+        if (lock is not None and lock.locked()) or (
+                time.monotonic() < self._requested_volume_until and self.state.volume != requested):
+            return requested
+        self._requested_volume = None
+        return self.state.volume
+
     async def set_volume(self, volume):
+        self._requested_volume = int(volume)
+        self._requested_volume_until = time.monotonic() + self._REQUESTED_VOLUME_GRACE
         volume = convert_volume(volume, 100, 0, self.dlna.volume_max, self.dlna.volume_min, self.dlna.volume_step)
-        await self.dlna.SetVolume(volume)
+        # Moving the volume slider in Plexamp sends a burst of values. Sent
+        # in parallel, they can overwhelm a renderer (a Yamaha AVR stopped
+        # answering on the network after 8 concurrent SetVolume calls). Keep
+        # one SetVolume in flight per device and send only the latest value.
+        if getattr(self, "_volume_lock", None) is None:
+            self._volume_lock = asyncio.Lock()
+        self._pending_volume = volume
+        if self._volume_lock.locked():
+            # The request in flight sends the latest value when it's done.
+            return
+        async with self._volume_lock:
+            try:
+                while self._pending_volume is not None:
+                    target, self._pending_volume = self._pending_volume, None
+                    await self.dlna.SetVolume(target)
+            except BaseException:
+                self._pending_volume = None
+                self._requested_volume = None
+                raise
+        self._requested_volume_until = time.monotonic() + self._REQUESTED_VOLUME_GRACE
         self.state.check_all_next_loop = True
 
     async def is_muted(self):
@@ -1278,7 +1320,7 @@ class PlexDlnaAdapter(object):
             shuffle = 0
         track_info = await self.queue.get_track_info()
         time = self.state.elapsed
-        volume = self.state.volume
+        volume = self._reported_volume()
         mute = "1" if self.state.muted else "0"
         state = {
             'state': self.plex_state,
