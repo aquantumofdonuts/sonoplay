@@ -640,20 +640,29 @@ class DlnaDevice(object):
 
     async def remove_self(self):
         async with devices_lock:
-            if self in devices:
-                devices.remove(self)
-        from plex.adapters import adapter_by_device, remove_adapter
+            # A delayed removal must leave a rediscovered instance alone.
+            for index, device in enumerate(devices):
+                if device is self:
+                    del devices[index]
+                    break
+            else:
+                return
+        from plex.adapters import adapters, remove_adapter
         from plex.subscribe import sub_man
         self.stop_subscribe()
-        adapter = await adapter_by_device(self)
-        adapter.state.state = "STOPPED"
-        adapter.state._wakeup_loop()
-        adapter.state._thread_should_stop = True
-        await sub_man.notify_device_disconnected(self)
-        await sub_man.notify_server_device(self, force=True)
-        adapter.queue = None
-        await remove_adapter(adapter)
+        # Don't use adapter_by_device() here: it would create a fresh
+        # adapter (and a new polling loop) for a device we're removing.
+        adapter = adapters.get(self.uuid)
+        if adapter is not None and adapter.dlna is self:
+            adapter.state.state = "STOPPED"
+            adapter.state._thread_should_stop = True
+            adapter.state._wakeup_loop()
+            adapter.queue = None
+            await remove_adapter(adapter)
         settings.mark_device_status(self.uuid, "offline")
+        # Plexamp receives an explicit disconnected timeline. The PMS timeline
+        # has no active state to send once the adapter is stopped.
+        await sub_man.notify_device_disconnected(self)
 
     def __str__(self):
         return self.name
