@@ -19,13 +19,14 @@
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 
+from collections import OrderedDict
+
 from fastapi import FastAPI, Request, Header, Query, HTTPException, Form
 from fastapi.responses import Response
 from html import escape as xml_escape
 from pydantic import BaseModel, Field
 import uvicorn
 import logging
-import re
 
 from dlna import (
     get_device_by_uuid,
@@ -48,7 +49,7 @@ from plex.subscribe import sub_man
 from utils import plex_server_response_headers, xml2dict, timeline_poll_headers, g, require_valid_uuid
 from settings import settings
 import asyncio
-from dlna.dlna_device import DlnaDevice
+from dlna.dlna_device import DlnaDevice, NotARendererError
 from plex.adapters import adapter_by_device
 from plex.gdm import PlexGDM
 from fastapi.templating import Jinja2Templates
@@ -120,8 +121,16 @@ async def handle_device_unreachable(request: Request, exc: ClientConnectionError
     )
 
 
+# Last discovery error per location URL. SSDP announcements repeat every
+# minute or so, and logging the same rejection each time buries the events
+# that matter. A new or different error is still logged.
+_DISCOVERY_ERROR_LIMIT = 128
+_DISCOVERY_ERROR_TTL = 600
+_discovery_errors: OrderedDict[str, tuple[int, float]] = OrderedDict()
+
+
 async def on_new_dlna_device(location_url):
-    logger.info("got new dlna device location url %s", location_url)
+    logger.debug("got new dlna device location url %s", location_url)
     for d in devices:
         if d.location_url == location_url:
             return
@@ -129,8 +138,25 @@ async def on_new_dlna_device(location_url):
     try:
         await device.get_data()
     except Exception as exc:
-        logger.warning("failed to init dlna device from %s: %s", location_url, exc)
+        message = str(exc) or exc.__class__.__name__
+        signature = hash((type(exc), message))
+        now = time.monotonic()
+        previous_signature, last_logged = _discovery_errors.get(location_url, (None, 0))
+        if previous_signature != signature or now - last_logged >= _DISCOVERY_ERROR_TTL:
+            logger.log(
+                logging.INFO if isinstance(exc, NotARendererError) else logging.WARNING,
+                "ignoring UPnP device at %s: %s" if isinstance(exc, NotARendererError)
+                else "failed to init dlna device from %s: %s",
+                location_url,
+                message,
+            )
+            last_logged = now
+        _discovery_errors[location_url] = (signature, last_logged)
+        _discovery_errors.move_to_end(location_url)
+        if len(_discovery_errors) > _DISCOVERY_ERROR_LIMIT:
+            _discovery_errors.popitem(last=False)
         return
+    _discovery_errors.pop(location_url, None)
     logger.info("got new dlna device from %s", device.name)
     asyncio.create_task(device.loop_subscribe(), name=f"dlna sub {device.name}")
     devices.append(device)
@@ -219,6 +245,7 @@ def _apply_stored_audio_settings():
 
 @s.on_event("startup")
 async def on_startup():
+    logging.getLogger("uvicorn.access").addFilter(SuppressNoisyHTTPLogsFilter())
     _apply_stored_audio_settings()
     # Create HTTP session with default timeout
     timeout = aiohttp.ClientTimeout(
@@ -696,7 +723,10 @@ async def dlna_subscribe(request: Request, uuid: str):
     adapter = await adapter_by_device(await get_device_by_uuid(uuid))
     b = await request.body()
     info = xml2dict(b)
-    if adapter is not None:
+    # Some renderers send events without a LastChange variable (the OPPO
+    # does after each SUBSCRIBE). There's nothing to update then.
+    prop = info.propertyset.property if info.propertyset else None
+    if adapter is not None and isinstance(prop, dict) and prop.get("LastChange"):
         adapter.update_state(info)
     return ""
 
@@ -984,24 +1014,26 @@ async def mirror(target_uuid: str = Header(None, alias="x-plex-target-client-ide
 
 
 class SuppressNoisyHTTPLogsFilter(logging.Filter):
-    """Filter out noisy HTTP access logs for specific endpoints.
+    """Hide successful polling and event requests while keeping failures."""
 
-    Matches the exact request path (with optional query string) so that
-    other paths sharing the prefix — e.g. a 404 on /api/devices/x/y —
-    still get logged.
-    """
-    _NOISY_PATHS = re.compile(r'"GET /(?:api/devices|player/timeline/poll)(?:\?[^" ]*)? HTTP')
+    _QUIET_GET_PATHS = {"/api/devices", "/player/timeline/poll", "/health", "/resources"}
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return self._NOISY_PATHS.search(record.getMessage()) is None
+        args = record.args
+        if not isinstance(args, tuple) or len(args) != 5:
+            return True
+        _, method, target, _, status = args
+        if not isinstance(status, int) or status >= 400:
+            return True
+        path = str(target).split("?", 1)[0]
+        if method == "GET" and path in self._QUIET_GET_PATHS:
+            return False
+        return not (method == "NOTIFY" and path.startswith("/dlna/callback/"))
 
 
 def start_plex_server(port=None):
     if port is None:
         port = settings.http_port
-    
-    # Configure logging to suppress noisy HTTP endpoints
-    logging.getLogger("uvicorn.access").addFilter(SuppressNoisyHTTPLogsFilter())
     
     return uvicorn.run("plex:plex_server", host="0.0.0.0", port=port)
 
