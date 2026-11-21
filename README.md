@@ -77,6 +77,7 @@ Common settings:
 | `HOST_IP` | auto-detected | Explicit host IP for DLNA advertisement |
 | `CLIENT_PROFILE` | unset | Plex client profile name sent to PMS (e.g. `Sonos`, `DLNA`) |
 | `PMS_ADDRESS` | unset | PMS LAN IP — see below |
+| `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 
 Note: docker-compose.yaml uses env_file.required and needs Docker Compose v2.17+.
 

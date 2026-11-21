@@ -245,6 +245,9 @@ def _apply_stored_audio_settings():
 
 @s.on_event("startup")
 async def on_startup():
+    from sonoplay.core.logging import apply_log_level
+
+    apply_log_level(settings.log_level)
     logging.getLogger("uvicorn.access").addFilter(SuppressNoisyHTTPLogsFilter())
     _apply_stored_audio_settings()
     # Create HTTP session with default timeout
