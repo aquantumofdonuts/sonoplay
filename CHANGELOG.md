@@ -7,6 +7,23 @@ The latest version is always available by pulling the `latest` tag.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.2.5] - 2026-11-21
+
+### Fixed
+
+- Fixed first-track restarts and intermittent stops between tracks by confirming the renderer is playing the requested track. ([#24](https://github.com/aquantumofdonuts/sonoplay/pull/24), [#32](https://github.com/aquantumofdonuts/sonoplay/pull/32))
+- Serialized volume commands and kept the latest requested value so slider drags do not overwhelm the renderer or cause the slider to jump backward. ([#26](https://github.com/aquantumofdonuts/sonoplay/pull/26))
+- Stopped recreating adapters for offline renderers, so one disconnected device no longer interrupts playback on others. ([#29](https://github.com/aquantumofdonuts/sonoplay/pull/29))
+- Preserved literal ampersands in XML CDATA and comments while repairing malformed SOAP replies. ([#33](https://github.com/aquantumofdonuts/sonoplay/pull/33))
+
+### Logging
+
+- Added the `LOG_LEVEL` setting and redacted Plex tokens in application and access logs. Reduced repeated DLNA messages and routine access logs while retaining failed HTTP requests. ([#27](https://github.com/aquantumofdonuts/sonoplay/pull/27), [#30](https://github.com/aquantumofdonuts/sonoplay/pull/30), [#33](https://github.com/aquantumofdonuts/sonoplay/pull/33))
+
+Thanks to [@kcgthb](https://github.com/kcgthb) for the reports, fixes, and regression tests.
+
+---
+
 ## [v1.2.4] - 2026-11-18
 
 ### Fixed
@@ -104,6 +121,7 @@ Based on commit `578399ead0fe606f562a897640a3c522226bdc22`.
 
 ---
 
+[v1.2.5]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.4...v1.2.5
 [v1.2.4]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.3...v1.2.4
 [v1.2.3]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.2...v1.2.3
 [v1.2.2]: https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.1...v1.2.2

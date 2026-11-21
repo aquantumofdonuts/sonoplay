@@ -1,0 +1,27 @@
+# SonoPlay v1.2.5
+
+Released November 21, 2026.
+
+## Playback and renderer reliability
+
+- Albums keep playing through track changes, and the first track can start without restarting a few seconds later. SonoPlay checks that the renderer is playing the requested track. ([#24](https://github.com/aquantumofdonuts/sonoplay/pull/24), [#32](https://github.com/aquantumofdonuts/sonoplay/pull/32))
+- Dragging the volume slider sends one volume command at a time. SonoPlay keeps the latest pending value and reports the requested volume while the receiver catches up. ([#26](https://github.com/aquantumofdonuts/sonoplay/pull/26))
+- An offline renderer is removed once, so its polling loop no longer interferes with playback on other renderers. ([#29](https://github.com/aquantumofdonuts/sonoplay/pull/29))
+- SOAP repair preserves literal ampersands inside XML CDATA and comments, including in stream URLs. ([#33](https://github.com/aquantumofdonuts/sonoplay/pull/33))
+
+## Troubleshooting
+
+Set `LOG_LEVEL=DEBUG` to collect more detail. `INFO` remains the default. Plex tokens are redacted, and routine access logs and repeated DLNA messages are quieter so failures are easier to find. ([#27](https://github.com/aquantumofdonuts/sonoplay/pull/27), [#30](https://github.com/aquantumofdonuts/sonoplay/pull/30), [#33](https://github.com/aquantumofdonuts/sonoplay/pull/33))
+
+Thanks to [@kcgthb](https://github.com/kcgthb) for the reports, fixes, and regression tests behind this release.
+
+## Upgrade
+
+Existing configuration works as is. For Docker Compose installations using the published image, run:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+[Full changelog](https://github.com/aquantumofdonuts/sonoplay/compare/v1.2.4...v1.2.5)
