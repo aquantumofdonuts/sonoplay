@@ -790,6 +790,12 @@ class PlexDlnaAdapter(object):
         
         # Check for premature STOPPED that should be ignored (LMS-uPnP #63, go2tv #43)
         if self._should_ignore_premature_stopped(changed_state):
+            # The STOPPED a device reports right after SetAVTransportURI can
+            # come in the same change as the target URI. Record the URI, or
+            # the operation never sees it confirmed and reloads the track
+            # once the settle timeout expires.
+            if self._active_operation_id and changed_state.get('current_uri') == self._active_target_uri:
+                self._active_operation_uri_confirmed = True
             self.state.update(state="TRANSITIONING")
             return
         
