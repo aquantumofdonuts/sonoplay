@@ -56,7 +56,7 @@ def test_didl_lite_is_not_empty_and_contains_res_with_protocol_info():
     )
     assert metadata
     assert "<DIDL-Lite" in metadata
-    assert 'protocolInfo="http-get:*:audio/mpeg:*"' in metadata
+    assert 'protocolInfo="http-get:*:audio/mpeg:DLNA.ORG_OP=01"' in metadata
     assert "<dc:title>Track Title</dc:title>" in metadata
     assert "<upnp:artist>Some Artist</upnp:artist>" in metadata
     assert "<upnp:album>Some Album</upnp:album>" in metadata
