@@ -86,17 +86,16 @@ def unescape_xml(xml):
     return unescape(xml.decode())
 
 
-# '&' that doesn't start an XML entity or character reference.
-_BARE_AMPERSAND_RE = re.compile(r'&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)')
+# Match CDATA and comments first so their literal ampersands stay intact.
+_BARE_AMPERSAND_RE = re.compile(
+    r'(<!\[CDATA\[.*?\]\]>|<!--.*?-->)|&(?!(?:amp|lt|gt|quot|apos|#[0-9]+|#x[0-9a-fA-F]+);)',
+    flags=re.DOTALL,
+)
 
 
 def escape_bare_ampersands(xml: str) -> str:
-    """Escape '&' characters that aren't part of an entity, so the XML parses.
-
-    Some renderers (e.g. Yamaha AVRs) send URLs with raw '&' in their query
-    strings, and unescape_xml() turns every '&amp;' into a bare '&'.
-    """
-    return _BARE_AMPERSAND_RE.sub('&amp;', xml)
+    """Escape raw ampersands in markup and text sent by some renderers."""
+    return _BARE_AMPERSAND_RE.sub(lambda match: match.group(1) or '&amp;', xml)
 
 
 def xml2dict(xml):

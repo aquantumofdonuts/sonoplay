@@ -62,3 +62,11 @@ def test_xml2dict_parses_soap_response_with_raw_ampersands():
     # sanitize_soap_response() runs escape_bare_ampersands() before parsing.
     info = xml2dict(escape_bare_ampersands(GET_POSITION_INFO))
     assert info.Envelope.Body.GetPositionInfoResponse.TrackURI == STREAM_URL
+
+
+def test_cdata_and_comments_keep_literal_ampersands():
+    text = f"<!-- retained & literal --> <![CDATA[\n{STREAM_URL}]]> {STREAM_URL}"
+    assert escape_bare_ampersands(text) == (
+        f"<!-- retained & literal --> <![CDATA[\n{STREAM_URL}]]> "
+        + STREAM_URL.replace("&", "&amp;")
+    )

@@ -345,7 +345,8 @@ class DlnaState(object):
         if check_count % position_check_count == 0 or self.check_all_next_loop:
             checks.append(self.dlna.GetPositionInfo(client=client))
             results.append(position_info)
-        if check_count % state_check_count == 0 or self.state == "TRANSITIONING" or self.check_all_next_loop:
+        operation_id = self.adapter._active_operation_id
+        if check_count % state_check_count == 0 or operation_id or self.state == "TRANSITIONING" or self.check_all_next_loop:
             checks.append(self.dlna.GetTransportInfo(client=client))
             results.append(state)
         if check_count % volume_check_count == 0 or self.check_all_next_loop:
@@ -365,8 +366,11 @@ class DlnaState(object):
                 continue
             results[idx].result = r
         self.begin_change_session()
+        polled_uri = None
+        polled_state = None
         if position_info and position_info.result:
             position_info = position_info.result
+            polled_uri = position_info.TrackURI
             self.elapsed = int(parse_timedelta(position_info.RelTime).total_seconds() * 1000)
             self.current_uri = position_info.TrackURI
             self.current_track_duration = int(
@@ -380,7 +384,8 @@ class DlnaState(object):
                     logger.exception("Unexpected error retrying GetTransportInfo")
         if state and state.result:
             state = state.result
-            self.state = state.CurrentTransportState
+            polled_state = state.CurrentTransportState
+            self.state = polled_state
         if volume and volume.result:
             volume_info = volume.result
             volume_value = extract_value(getattr(volume_info, 'CurrentVolume', None))
@@ -396,10 +401,13 @@ class DlnaState(object):
                 muted_value = muted_value.lower() in ("1", "true", "yes")
             self.muted = bool(muted_value)
         changed_state = self.end_change_session()
-        if changed_state and self.state_change_callback:
-            # if __debug__:
-            #     print(f"{self.dlna.name} check loop {changed_state.toDict()} {self} in thread {current_thread().name}")
-            self.state_change_callback(changed_state)
+        if self.state_change_callback:
+            # State deltas omit unchanged fields. During a track switch, keep
+            # the URI and transport state that this poll actually observed.
+            if operation_id and operation_id == self.adapter._active_operation_id and polled_uri and polled_state:
+                self.state_change_callback(changed_state, polled_transport=(polled_uri, polled_state))
+            elif changed_state:
+                self.state_change_callback(changed_state)
 
     @property
     def loop_interval(self):
@@ -777,15 +785,23 @@ class PlexDlnaAdapter(object):
             return True
         return False
 
-    def state_changed_callback(self, changed_state: DotMap):
+    def state_changed_callback(self, changed_state: DotMap, *, polled_transport=None):
         if self.loop.is_closed():
             return
-        if __debug__ or 'elapsed' not in changed_state.keys() or len(changed_state.keys()) > 2 or \
-                not (0 <= changed_state.elapsed - changed_state.old.elapsed <= 1000):
+        if changed_state and (__debug__ or 'elapsed' not in changed_state.keys() or len(changed_state.keys()) > 2 or
+                              not (0 <= changed_state.elapsed - changed_state.old.elapsed <= 1000)):
             logger.debug("%s state change notified %s", self.dlna.name, changed_state.toDict())
         
-        # Track PLAYING state for premature STOPPED detection
-        if 'state' in changed_state and changed_state.state == "PLAYING":
+        reported_uri, reported_state = polled_transport or (changed_state.get('current_uri'), changed_state.get('state'))
+        playing_other_uri = (
+            self._active_operation_id and reported_state in ("PLAYING", "PAUSED_PLAYBACK")
+            and reported_uri and reported_uri != self._active_target_uri
+        )
+        if playing_other_uri:
+            self._active_operation_state_ready = False
+            logger.debug("%s ignoring %s for previous URI during transport operation %d",
+                         self.dlna.name, reported_state, self._active_operation_id)
+        elif reported_state == "PLAYING":
             self._seen_playing_since_operation = True
         
         # Check for premature STOPPED that should be ignored (LMS-uPnP #63, go2tv #43)
@@ -800,16 +816,16 @@ class PlexDlnaAdapter(object):
             return
         
         if self._active_operation_id:
-            if 'current_uri' in changed_state:
-                if changed_state.current_uri == self._active_target_uri:
-                    self._active_operation_uri_confirmed = True
-                    if self._active_operation_state_ready and not self._active_operation_state_confirmed:
-                        self._active_operation_state_confirmed = True
-                        if self._active_operation_event:
-                            self._active_operation_event.set()
-                        logger.debug("%s transport operation %d uri confirmed", self.dlna.name, self._active_operation_id)
-                        self._transport_state_override = None
-                elif changed_state.current_uri is None and changed_state.old.get('current_uri') == self._active_target_uri:
+            if reported_uri and reported_uri == self._active_target_uri:
+                self._active_operation_uri_confirmed = True
+                if self._active_operation_state_ready and not self._active_operation_state_confirmed:
+                    self._active_operation_state_confirmed = True
+                    if self._active_operation_event:
+                        self._active_operation_event.set()
+                    logger.debug("%s transport operation %d uri confirmed", self.dlna.name, self._active_operation_id)
+                    self._transport_state_override = None
+            elif 'current_uri' in changed_state:
+                if changed_state.current_uri is None and changed_state.old.get('current_uri') == self._active_target_uri:
                     logger.debug("%s ignoring transient URI clear during active transport operation", self.dlna.name)
                     self.state.update(uri=self._active_target_uri)
                     return
@@ -839,19 +855,20 @@ class PlexDlnaAdapter(object):
                         return
                     if __debug__:
                         logger.debug("%s received uri %s while targeting %s", self.dlna.name, changed_state.current_uri, self._active_target_uri)
-            if 'state' in changed_state:
-                if changed_state.state in ("PLAYING", "PAUSED_PLAYBACK"):
-                    self._active_operation_state_ready = True
-                    if self._active_operation_uri_confirmed and not self._active_operation_state_confirmed:
-                        self._active_operation_state_confirmed = True
-                        if self._active_operation_event:
-                            self._active_operation_event.set()
-                        logger.debug("%s transport operation %d state confirmed", self.dlna.name, self._active_operation_id)
-                        self._transport_state_override = None
-                elif changed_state.state == "STOPPED" and not self._active_operation_state_confirmed:
-                    logger.debug("%s ignoring STOP during active transport operation", self.dlna.name)
-                    self.state.update(state="TRANSITIONING")
-                    return
+            if not playing_other_uri and reported_state in ("PLAYING", "PAUSED_PLAYBACK"):
+                self._active_operation_state_ready = True
+                if self._active_operation_uri_confirmed and not self._active_operation_state_confirmed:
+                    self._active_operation_state_confirmed = True
+                    if self._active_operation_event:
+                        self._active_operation_event.set()
+                    logger.debug("%s transport operation %d state confirmed", self.dlna.name, self._active_operation_id)
+                    self._transport_state_override = None
+            elif changed_state.get('state') == "STOPPED" and not self._active_operation_state_confirmed:
+                logger.debug("%s ignoring STOP during active transport operation", self.dlna.name)
+                self.state.update(state="TRANSITIONING")
+                return
+        if not changed_state:
+            return
         # Post-operation protection: detect spurious STOPPED immediately after operation finish
         if self._check_post_operation_false_stop(changed_state):
             return

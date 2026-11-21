@@ -55,6 +55,10 @@ ERROR_COUNT_TO_REMOVE = 20
 MAX_RETRIES = 3
 
 
+class NotARendererError(Exception):
+    """The UPnP device at this location isn't a usable DLNA media renderer."""
+
+
 class ServerErrorException(Exception):
     """Raised for HTTP 5xx errors that should be retried."""
     def __init__(self, status: int, body: str):
@@ -186,6 +190,10 @@ class DlnaDeviceService(object):
         # Subscription expiry tracking for auto-renewal
         self._subscription_expiry: datetime | None = None
         self._resubscribe_margin_seconds = 30
+        # Last UPnP error per action and whether SUBSCRIBE is failing, so
+        # errors that repeat on every poll or renewal are logged once.
+        self._last_errors = {}
+        self._subscribe_failing = False
 
     def payload_from_template(self, action: str, data: dict):
         fields = ''
@@ -222,13 +230,18 @@ class DlnaDeviceService(object):
                 faultstring = fault.get('faultstring')
                 
                 if error_desc or error_code:
-                    logger.warning("dlna %s %s UPnP error %s: %s",
-                                  self.device.name, action, error_code, error_desc)
+                    message = f"UPnP error {error_code}: {error_desc}"
                 elif faultstring:
-                    logger.warning("dlna %s %s SOAP Fault: %s",
-                                  self.device.name, action, faultstring)
+                    message = f"SOAP Fault: {faultstring}"
                 else:
-                    logger.warning("dlna %s %s SOAP Fault (no details)", self.device.name, action)
+                    message = "SOAP Fault (no details)"
+                # Polled actions (GetVolume on a TV that refuses it, say)
+                # fail the same way every time: log until the error changes
+                # or the action succeeds again.
+                repeated = self._last_errors.get(action) == message
+                self._last_errors[action] = message
+                logger.log(logging.DEBUG if repeated else logging.WARNING,
+                           "dlna %s %s %s", self.device.name, action, message)
                 
                 return 'handled'  # Valid SOAP Fault - don't retry
         except Exception as e:
@@ -308,6 +321,7 @@ class DlnaDeviceService(object):
                     if error is not None:
                         logger.warning("dlna device control request error: %s", info.toDict())
                         return None
+                    self._last_errors.pop(action, None)
                     return info.Envelope.Body.get(f"{action}Response")
             except (ClientConnectionError, asyncio.TimeoutError) as e:
                 last_exception = e
@@ -367,13 +381,20 @@ class DlnaDeviceService(object):
                         + self.device.uuid + '>',
             'Timeout': f'Second-{timeout_sec}'
         }
-        logger.info("sub dlna device %s %s", self.device.name, self.service_type)
+        # Log the first subscription; renewals happen every timeout_sec / 2.
+        quiet = self._subscription_expiry is not None or self._subscribe_failing
+        logger.log(logging.DEBUG if quiet else logging.INFO,
+                   "sub dlna device %s %s", self.device.name, self.service_type)
         async with g.http.request("SUBSCRIBE", self.event_url, headers=headers) as response:
             if response.ok:
                 self.next_subscribe_call_time = datetime.now(timezone.utc) + timedelta(seconds=(timeout_sec // 2))
                 self._subscription_expiry = datetime.now(timezone.utc) + timedelta(seconds=timeout_sec)
+                self._subscribe_failing = False
                 logger.debug("%s subscribed, expires in %ds", self.device.name, timeout_sec)
                 return True
+            logger.log(logging.DEBUG if self._subscribe_failing else logging.WARNING,
+                       "dlna %s subscribe failed: HTTP %s", self.device.name, response.status)
+            self._subscribe_failing = True
         return False
 
     def needs_resubscription(self) -> bool:
@@ -495,10 +516,10 @@ class DlnaDevice(object):
                 if renderer_name and renderer_name.lower() != (self.name or '').lower():
                     self.name = renderer_name
             if not self.name or not self.uuid:
-                raise Exception(f"not valid dlna device {self.location_url}")
-            if UPNP_AVT_SERVICE_TYPE not in self.services or UPNP_RC_SERVICE_TYPE not in self.services:
-                logger.warning("dlna device %s missing required services: %s", self.name, list(self.services.keys()))
-                raise Exception(f"not valid dlna device {self.name}")
+                raise NotARendererError("no friendlyName or UDN in device description")
+            missing = [s for s in (UPNP_AVT_SERVICE_TYPE, UPNP_RC_SERVICE_TYPE) if s not in self.services]
+            if missing:
+                raise NotARendererError(f"{self.name} is not a media renderer (missing {', '.join(missing)})")
             url = urlparse(self.location_url)
             self.ip = url.hostname
             self.name = settings.dlna_name_alias(self.uuid, self.name, self.ip)
@@ -584,7 +605,7 @@ class DlnaDevice(object):
     async def subscribe(self, service_type: str = UPNP_AVT_SERVICE_TYPE, timeout_sec=120):
         await self.get_data()
         service = self._get_service(service_type)
-        await service.subscribe(timeout_sec=timeout_sec)
+        return await service.subscribe(timeout_sec=timeout_sec)
 
     async def loop_subscribe(self, service_type: str = UPNP_AVT_SERVICE_TYPE, timeout_sec=120):
         service = self._get_service(service_type)
@@ -596,19 +617,33 @@ class DlnaDevice(object):
         # when it sees subscribed flipped back to True.
         token = object()
         service.subscribe_loop_token = token
+        # An unreachable device fails every retry the same way; log the
+        # first failure and then only changes, until a subscribe succeeds.
+        last_error = None
+
+        def log_error(kind, exc):
+            nonlocal last_error
+            message = f"{kind}: {str(exc) or exc.__class__.__name__}"
+            logger.log(logging.DEBUG if message == last_error else logging.WARNING,
+                       "dlna %s subscribe loop %s", self.name, message)
+            last_error = message
+
         while service.subscribed and service.subscribe_loop_token is token:
             try:
-                await self.subscribe(service_type=service_type, timeout_sec=timeout_sec)
+                subscribed = await self.subscribe(service_type=service_type, timeout_sec=timeout_sec)
+                if subscribed and last_error is not None:
+                    logger.info("dlna %s subscribe loop recovered", self.name)
+                    last_error = None
                 await asyncio.sleep(timeout_sec // 2)
             except ClientConnectorError as exc:
-                logger.warning("dlna %s subscribe loop connection error: %s", self.name, exc)
+                log_error("connection error", exc)
                 if not service.subscribed:
                     break
                 await asyncio.sleep(min(timeout_sec, 15))
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.warning("dlna %s subscribe loop error: %s", self.name, exc)
+                log_error("error", exc)
                 if not service.subscribed:
                     break
                 await asyncio.sleep(min(timeout_sec, 10))
@@ -640,20 +675,29 @@ class DlnaDevice(object):
 
     async def remove_self(self):
         async with devices_lock:
-            if self in devices:
-                devices.remove(self)
-        from plex.adapters import adapter_by_device, remove_adapter
+            # A delayed removal must leave a rediscovered instance alone.
+            for index, device in enumerate(devices):
+                if device is self:
+                    del devices[index]
+                    break
+            else:
+                return
+        from plex.adapters import adapters, remove_adapter
         from plex.subscribe import sub_man
         self.stop_subscribe()
-        adapter = await adapter_by_device(self)
-        adapter.state.state = "STOPPED"
-        adapter.state._wakeup_loop()
-        adapter.state._thread_should_stop = True
-        await sub_man.notify_device_disconnected(self)
-        await sub_man.notify_server_device(self, force=True)
-        adapter.queue = None
-        await remove_adapter(adapter)
+        # Don't use adapter_by_device() here: it would create a fresh
+        # adapter (and a new polling loop) for a device we're removing.
+        adapter = adapters.get(self.uuid)
+        if adapter is not None and adapter.dlna is self:
+            adapter.state.state = "STOPPED"
+            adapter.state._thread_should_stop = True
+            adapter.state._wakeup_loop()
+            adapter.queue = None
+            await remove_adapter(adapter)
         settings.mark_device_status(self.uuid, "offline")
+        # Plexamp receives an explicit disconnected timeline. The PMS timeline
+        # has no active state to send once the adapter is stopped.
+        await sub_man.notify_device_disconnected(self)
 
     def __str__(self):
         return self.name
